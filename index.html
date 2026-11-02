@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Compora Daily</title>
+<meta name="description" content="The Compora family's wall calendar: everyone's week, the weather, trash day and the lists, on one screen.">
+<meta name="theme-color" content="#2B4C7E">
+<link rel="manifest" href="manifest.json">
+<script>try{var t=JSON.parse(localStorage.getItem("cd.theme")||"null");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<link rel="icon" href="icon-64.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Daily">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Work+Sans:wght@400;500;600&family=Courier+Prime:wght@400;700&display=swap">
+<style>
+/* Same paper-and-ink family as Mia's Almanac, Day Out and Mangia Mangia. The accent here is masthead navy. */
+:root{
+  --bg:#EDE3CC; --surface:#F6EEDB; --ink:#2B2118; --muted:#76664D; --line:#CDBC98;
+  --accent:#2B4C7E; --red:#B0432B; --green:#2E6A5F; --gold:#946410; --hot:#B0432B;
+  --f-display:"IM Fell English","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --f-body:"Work Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"Courier Prime","Courier New",ui-monospace,monospace;
+  --paper:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .06 0'/></filter><rect width='220' height='220' filter='url(%23n)'/></svg>");
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#1A1712; --surface:#231F18; --ink:#EEE4CD; --muted:#A8977A; --line:#3E3628;
+  --accent:#8FB3E6; --red:#E3806A; --green:#72B5A7; --gold:#E3B85C; --hot:#E3806A; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#1A1712; --surface:#231F18; --ink:#EEE4CD; --muted:#A8977A; --line:#3E3628;
+  --accent:#8FB3E6; --red:#E3806A; --green:#72B5A7; --gold:#E3B85C; --hot:#E3806A; color-scheme:dark }
+
+*{box-sizing:border-box}
+html{color-scheme:light;-webkit-text-size-adjust:100%;height:100%}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{margin:0;min-height:100%;background:var(--bg) var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.4;
+  padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));padding-block:10px 84px}
+h1,h2,h3{font-family:var(--f-display);font-weight:400;margin:0;text-wrap:balance}
+a{color:var(--accent)}
+.label{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+/* masthead */
+.mast{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:4px 0 8px;border-bottom:3px double var(--line)}
+.brandrow{display:flex;align-items:center;gap:10px;min-width:0}
+.logo{width:48px;height:48px;flex:none;border-radius:50%;border:2px solid #2B2118;box-shadow:inset 0 0 0 3px #F6EEDB,inset 0 0 0 4px #2B2118,0 0 0 1px var(--line);background:#F6EEDB;overflow:hidden;display:block;position:relative}
+.logo span{position:absolute;inset:3px;background:#2B2118;-webkit-mask:url("beaver-portrait.png") center/cover no-repeat;mask:url("beaver-portrait.png") center/cover no-repeat}
+.brand{font-family:var(--f-display);font-size:30px;line-height:1;letter-spacing:.01em;white-space:nowrap}
+.mast .sub{font-family:var(--f-display);font-style:italic;font-size:14px;color:var(--muted);white-space:nowrap}
+.datebox{text-align:center;min-width:0}
+.datebox .d{font-family:var(--f-display);font-size:22px;line-height:1.1}
+.datebox .n{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.clock{font-family:var(--f-display);font-size:34px;line-height:1;font-variant-numeric:tabular-nums;text-align:right}
+.clock small{font-size:.45em;color:var(--muted);margin-left:4px}
+.tools{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+.ibtn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:3px;padding:4px 8px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}
+.ibtn svg{width:14px;height:14px}
+.ibtn[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+
+/* plates */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0;box-shadow:inset 0 0 0 4px var(--surface),inset 0 0 0 5px var(--line)}
+.card-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card-h h2{font-size:20px;line-height:1.1}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+
+/* board layout */
+.board{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.left{display:flex;flex-direction:column;gap:12px;min-width:0}
+.right{display:flex;flex-direction:column;gap:10px;min-width:0}
+@media (min-width:980px){
+  body{height:100%;padding-bottom:12px;overflow:hidden}
+  .wrap{height:100%;display:flex;flex-direction:column}
+  .board{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,30%) 1fr}
+  .left{min-height:0;overflow:hidden}
+  .left .card.lists{flex:1;min-height:0}
+  .right{min-height:0}
+  .brand{font-size:36px}
+  .datebox .d{font-size:28px}
+  .clock{font-size:46px}
+  .nav{display:none}
+  .phone-only{display:none!important}
+}
+@media (max-width:979px){.wall-only{display:none!important}}
+
+/* Beavy's corner */
+.beavy{display:grid;grid-template-columns:110px 1fr;gap:4px 14px;align-items:center}
+.beavy img{width:110px;height:auto;display:block;filter:drop-shadow(0 2px 2px rgba(0,0,0,.18))}
+.beavy .temp{font-family:var(--f-display);font-size:44px;line-height:1}
+.beavy .temp sup{font-size:.4em;vertical-align:top;position:relative;top:.25em}
+.beavy .row{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.beavy .say{font-family:var(--f-display);font-size:17px;line-height:1.3;margin:0}
+.beavy .say em{color:var(--accent)}
+.beavy .wear{font-size:13px;color:var(--muted);margin:0}
+.wiggle{animation:wig .9s ease-in-out}
+@keyframes wig{0%,100%{transform:rotate(0)}25%{transform:rotate(-4deg)}75%{transform:rotate(4deg)}}
+
+/* heads-up */
+.notices{display:flex;flex-direction:column;gap:7px}
+.notice{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center;padding:9px 11px;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+.notice .ico{font-size:22px;grid-row:1/3;line-height:1}
+.notice .t{font-family:var(--f-display);font-size:17px;line-height:1.15}
+.notice .s{font-size:12.5px;color:var(--muted)}
+.notice.hot{border-color:var(--hot);box-shadow:inset 0 0 0 1px var(--hot)}
+.notice.hot .t{color:var(--hot)}
+.upnext{display:flex;flex-direction:column;gap:5px}
+.upnext .row{display:grid;grid-template-columns:62px 1fr;gap:8px;align-items:baseline;font-size:14px}
+.upnext .when{font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.upnext .who{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);margin-right:6px;vertical-align:-1px}
+.upnext .day{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+/* view bar */
+.viewbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:7px 13px;font-weight:500;font-size:14px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.viewbar .title{font-family:var(--f-display);font-size:21px;margin:0 4px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto}
+.legend span{display:inline-flex;align-items:center;gap:5px;font-family:var(--f-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.legend i{width:11px;height:11px;border-radius:50%;background:var(--c);display:inline-block}
+
+/* week view */
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;flex:1;min-height:0}
+.col{display:flex;flex-direction:column;gap:5px;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:8px 7px;min-height:0}
+.col.today{box-shadow:inset 0 0 0 2px var(--accent);border-color:var(--accent)}
+.col.past{opacity:.6}
+.col.weekend .dh .dn{color:var(--red)}
+.dh{display:flex;align-items:baseline;justify-content:space-between;gap:6px;border-bottom:1px solid var(--line);padding-bottom:5px}
+.dh .dn{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.dh .dd{font-family:var(--f-display);font-size:24px;line-height:1}
+.col.today .dh .dd{color:var(--accent)}
+.wx{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);min-height:18px;white-space:nowrap;overflow:hidden}
+.wx b{color:var(--ink);font-weight:500}
+.evs{display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin}
+.ev{--c:var(--muted);display:block;width:100%;text-align:left;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:3px;padding:5px 7px;background:var(--surface);background:color-mix(in srgb,var(--c) 13%,var(--surface));color:inherit;font-size:13.5px;line-height:1.25;overflow:hidden}
+.ev .tm{font-family:var(--f-mono);font-size:11px;color:var(--muted);display:block}
+.ev .tt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.ev.allday{border-left-width:4px;font-weight:500}
+.ev.house{opacity:.85;font-weight:400}
+.ev.done{opacity:.45;text-decoration:line-through}
+.dinner{border-top:1px dashed var(--line);padding-top:5px;font-size:12.5px;color:var(--muted);display:flex;gap:5px;align-items:baseline;background:transparent;border-left:0;border-right:0;border-bottom:0;border-radius:0;width:100%;text-align:left}
+.dinner b{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dinner.empty{color:var(--line)}
+.col.today .dinner.empty{color:var(--muted)}
+@media (min-width:1500px){.ev{font-size:16px;padding:6px 8px}.ev .tm{font-size:12px}.dh .dd{font-size:30px}.dh .dn{font-size:12px}.wx{font-size:14px}.dinner{font-size:14px}.cell .mini{font-size:13px}.cell .num{font-size:18px}.notice .t{font-size:19px}.upnext .row{font-size:15px}.beavy .say{font-size:19px}.beavy .wear{font-size:14px}.item .tx{font-size:16px}}
+
+/* agenda (phone week) */
+.agenda{display:flex;flex-direction:column;gap:6px}
+.agenda .dayh{display:flex;align-items:baseline;gap:10px;margin:8px 0 2px}
+.agenda .dayh h3{font-size:20px}
+.agenda .dayh .w{font-size:13px;color:var(--muted);margin-left:auto}
+.agenda .ev{padding:9px 10px;font-size:15px}
+.agenda .ev .tm{display:inline;margin-right:8px}
+
+/* month view */
+.month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:auto repeat(6,minmax(0,1fr));gap:4px;flex:1;min-height:0}
+.month .dow{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center;padding:2px 0}
+.cell{display:flex;flex-direction:column;gap:2px;min-width:0;min-height:72px;background:var(--surface);border:1px solid var(--line);border-radius:3px;padding:4px 5px;text-align:left;color:inherit;overflow:hidden}
+.cell.other{opacity:.45}
+.cell.today{box-shadow:inset 0 0 0 2px var(--accent);border-color:var(--accent)}
+.cell .num{font-family:var(--f-display);font-size:16px;line-height:1}
+.cell.today .num{color:var(--accent)}
+.cell .mini{--c:var(--muted);font-size:11px;line-height:1.2;border-left:3px solid var(--c);padding-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--c) 13%,var(--surface));border-radius:2px}
+.cell .more{font-family:var(--f-mono);font-size:10px;color:var(--muted)}
+@media (max-width:979px){.cell{min-height:58px}.cell .mini{display:none}.cell .dots{display:flex;gap:3px;flex-wrap:wrap}.cell .dots i{width:7px;height:7px;border-radius:50%;background:var(--c);display:inline-block}}
+@media (min-width:980px){.cell .dots{display:none}}
+
+/* lists */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--surface);border-radius:3px;padding:6px 11px;font-size:13.5px;font-weight:500}
+.tab[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.tab .n{font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:5px}
+.tab[aria-pressed="true"] .n{color:var(--surface);opacity:.8}
+.addrow{display:flex;gap:6px}
+.addrow input{flex:1;min-width:0;padding:9px 11px;border:1px solid var(--line);border-radius:3px;background:var(--bg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--accent);background:var(--accent);color:#FFF8EC;border-radius:3px;padding:8px 13px;font-weight:600;text-decoration:none;font-size:14px}
+.btn.quiet{background:transparent;color:var(--accent)}
+.btn.small{padding:5px 9px;font-size:12.5px}
+.items{display:flex;flex-direction:column;gap:3px;overflow-y:auto;min-height:0;flex:1;scrollbar-width:thin}
+.item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:7px 8px;border-radius:3px;border:1px solid transparent}
+.item:hover{border-color:var(--line)}
+.item .chk{width:22px;height:22px;border:2px solid var(--muted);border-radius:4px;background:transparent;padding:0;display:grid;place-items:center;color:var(--surface)}
+.item.done .chk{background:var(--green);border-color:var(--green)}
+.item .tx{font-size:15px;word-break:break-word}
+.item.done .tx{text-decoration:line-through;color:var(--muted)}
+.item .del{border:0;background:transparent;color:var(--muted);padding:2px 6px;font-size:16px;opacity:.6}
+.empty{padding:14px;border:1px dashed var(--line);border-radius:4px;color:var(--muted);text-align:center;font-family:var(--f-display);font-size:16px}
+.dinners{display:flex;flex-direction:column;gap:4px;overflow-y:auto}
+.dinners .row{display:grid;grid-template-columns:84px 1fr;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--line)}
+.dinners .row .d{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.dinners input{width:100%;border:0;background:transparent;padding:6px 4px;border-bottom:1px solid transparent}
+.dinners input:focus{outline:0;border-bottom-color:var(--accent)}
+
+/* apps */
+.apps{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
+.apps iframe{flex:1;min-height:70vh;width:100%;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+@media (min-width:980px){.apps iframe{min-height:0}}
+
+/* dialogs */
+dialog{border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink);padding:18px;max-width:min(520px,92vw);width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(20,15,10,.45)}
+dialog h2{font-size:22px;margin-bottom:6px}
+.dl{display:flex;flex-direction:column;gap:8px}
+.dl .meta{font-size:14px;color:var(--muted)}
+.dl .meta b{color:var(--ink);font-weight:500}
+.dl p{margin:0;white-space:pre-line;font-size:14px}
+.dl .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.dl label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.dl input,.dl select{padding:8px 10px;border:1px solid var(--line);border-radius:3px;background:var(--bg)}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:2px;color:#FFF8EC;background:var(--c)}
+.daylist{display:flex;flex-direction:column;gap:5px;max-height:60vh;overflow-y:auto}
+
+.status{font-size:12px;color:var(--muted);text-align:center;padding-top:6px}
+.status.bad{color:var(--red)}
+.foot{font-size:12px;color:var(--muted);text-align:center;border-top:3px double var(--line);padding-top:10px}
+
+/* bottom nav on phones */
+.nav{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-around;background:var(--surface);border-top:1px solid var(--line);padding:6px 0 calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
+.nav button{border:0;background:transparent;color:var(--muted);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 10px}
+.nav button[aria-current="true"]{color:var(--accent)}
+.nav svg{width:20px;height:20px}
+@media (min-width:980px){.nav{display:none}}
+@media (max-width:979px){
+  body[data-view="today"] .right, body[data-view="today"] .card.lists{display:none}
+  body[data-view="week"] .left, body[data-view="month"] .left, body[data-view="apps"] .left{display:none}
+  body[data-view="lists"] .right, body[data-view="lists"] .card.today, body[data-view="lists"] .card.heads{display:none}
+  .mast{grid-template-columns:1fr auto}.datebox{display:none}
+}
+</style>
+</head>
+<body data-view="today">
+<div class="wrap">
+  <header class="mast">
+    <div class="brandrow"><span class="logo" aria-hidden="true"><span></span></span><div><h1 class="brand">Compora Daily</h1><div class="sub" id="subLine">The house, on one page</div></div></div>
+    <div class="datebox"><div class="d" id="dateBig">—</div><div class="n" id="dateSmall"></div></div>
+    <div>
+      <div class="clock" id="clock">—</div>
+      <div class="tools">
+        <button class="ibtn" id="themeBtn" type="button" aria-label="Switch light or dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A5.5 5.5 0 0 1 12 3z"/></svg><span>Theme</span></button>
+        <button class="ibtn" id="setBtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Setup</span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="board">
+    <aside class="left">
+      <section class="card today" aria-label="Beavy and the weather">
+        <div class="beavy">
+          <img id="beavyImg" src="gear-fall.webp" alt="Beavy the beaver dressed for the weather" width="260" height="322">
+          <div>
+            <div class="row"><span class="temp" id="tempNow">--<sup>°</sup></span><span class="label" id="gearTag">Checking the sky…</span></div>
+            <p class="say" id="beavySays">Beavy's looking out the window…</p>
+            <p class="wear" id="beavyWear"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card heads" aria-label="Heads up">
+        <div class="card-h"><h2>Heads up</h2><span class="hint" id="headsHint"></span></div>
+        <div class="notices" id="notices"></div>
+        <div class="upnext" id="upnext"></div>
+        <div class="phone-only agenda" id="todayAgenda"></div>
+      </section>
+
+      <section class="card lists" aria-label="Lists">
+        <div class="card-h"><h2 id="listsTitle">Lists</h2><button class="btn quiet small" id="clearDone" type="button">Clear done</button></div>
+        <div class="tabs" id="listTabs">
+          <button class="tab" data-list="grocery" aria-pressed="true" type="button">Grocery<span class="n" id="nGrocery"></span></button>
+          <button class="tab" data-list="todo" aria-pressed="false" type="button">To-do<span class="n" id="nTodo"></span></button>
+          <button class="tab" data-list="dinners" aria-pressed="false" type="button">Dinners</button>
+        </div>
+        <form class="addrow" id="addForm" autocomplete="off"><input id="addInput" type="text" placeholder="Add to grocery…" maxlength="120"><button class="btn" type="submit">Add</button></form>
+        <div class="items" id="items"></div>
+        <div class="dinners" id="dinners" hidden></div>
+        <div class="status" id="listStatus"></div>
+      </section>
+    </aside>
+
+    <section class="right">
+      <div class="viewbar">
+        <div class="seg wall-only" id="viewSeg">
+          <button type="button" data-view="week" aria-pressed="true">Week</button>
+          <button type="button" data-view="month" aria-pressed="false">Month</button>
+          <button type="button" data-view="apps" aria-pressed="false">Apps</button>
+        </div>
+        <div class="seg" id="navSeg"><button type="button" id="prevBtn" aria-label="Earlier">‹</button><button type="button" id="todayBtn">Today</button><button type="button" id="nextBtn" aria-label="Later">›</button></div>
+        <h2 class="title" id="viewTitle"></h2>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="week" id="week"></div>
+      <div class="agenda phone-only" id="agenda" hidden></div>
+      <div class="month" id="month" hidden></div>
+      <div class="apps" id="apps" hidden>
+        <div class="tabs" id="appTabs">
+          <button class="tab" data-app="https://acompora19.github.io/mias-almanac/" aria-pressed="false" type="button">Mia's Almanac</button>
+          <button class="tab" data-app="https://acompora19.github.io/beavys-day-out/" aria-pressed="false" type="button">Beavy's Day Out</button>
+          <button class="tab" data-app="https://acompora19.github.io/mangia-mangia/" aria-pressed="false" type="button">Mangia Mangia</button>
+        </div>
+        <iframe id="appFrame" title="App" loading="lazy" referrerpolicy="no-referrer"></iframe>
+      </div>
+      <div class="status" id="calStatus"></div>
+    </section>
+  </div>
+
+  <footer class="foot phone-only">Events come from the family's Google Calendars. Add things on your phone's calendar and they show up here within a few minutes.</footer>
+</div>
+
+<nav class="nav" aria-label="Sections">
+  <button type="button" data-nav="today" aria-current="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Today</button>
+  <button type="button" data-nav="week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Week</button>
+  <button type="button" data-nav="month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M9 4v17M15 4v17M3 15h18"/></svg>Month</button>
+  <button type="button" data-nav="lists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11M9 12h11M9 18h11M4 6h1M4 12h1M4 18h1"/></svg>Lists</button>
+  <button type="button" data-nav="apps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Apps</button>
+</nav>
+
+<dialog id="evDialog"><div class="dl" id="evBody"></div></dialog>
+<dialog id="dayDialog"><div class="dl" id="dayBody"></div></dialog>
+<dialog id="dinnerDialog"><form class="dl" id="dinnerForm" method="dialog"><h2 id="dinnerTitle">Dinner</h2><label>What's for dinner?<input id="dinnerInput" type="text" maxlength="80" placeholder="Tacos"></label><div class="acts"><button class="btn" type="submit" value="save">Save</button><button class="btn quiet" type="submit" value="clear">Clear</button><button class="btn quiet" type="submit" value="cancel">Cancel</button></div></form></dialog>
+<dialog id="setDialog">
+  <form class="dl" id="setForm" method="dialog">
+    <h2>Setup</h2>
+    <label>Calendar Worker address (from Cloudflare)<input id="setWorker" type="url" placeholder="https://compora-daily.YOURNAME.workers.dev" inputmode="url"></label>
+    <div class="hint" id="setWorkerHint">Leave blank to see sample events. The README in the repo walks through making the Worker.</div>
+    <label>Trash pickup day<select id="setTrashDay"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></label>
+    <label>Recycling<select id="setRecycle"><option value="same">Same day, every week</option><option value="even">Every other week (this week: yes)</option><option value="odd">Every other week (this week: no)</option><option value="none">No recycling</option></select></label>
+    <label>Holiday rule<select id="setShift"><option value="1">Pickup slides a day after a holiday</option><option value="0">Holidays don't change pickup</option></select></label>
+    <div class="hint">These settings live on this device only (each phone and the tablet keep their own).</div>
+    <div class="acts"><button class="btn" type="submit" value="save">Save</button><button class="btn quiet" type="submit" value="cancel">Cancel</button><button class="btn quiet" type="button" id="reloadBtn">Reload app</button></div>
+  </form>
+</dialog>
+
+<script type="module">
+import * as C from "./daily-core.js";
+import ICAL from "./vendor/ical.min.js";
+
+// ============================================================
+// SETTINGS you may want to change
+// ============================================================
+// Once the Cloudflare Worker exists, paste its address here so every phone and the tablet use it without setup.
+// (A device's own Setup screen can still override it.)
+const WORKER_URL = "";
+// The shared Firebase project (same one as Mangia Mangia and Mia's Almanac). Lists live in "daily_board/main".
+const FIREBASE = {
+  apiKey: "AIzaSyDaBcD1gNsi56k4_w2NV8eWevv5EltjwOk",
+  authDomain: "mangia-mangia-29ece.firebaseapp.com",
+  projectId: "mangia-mangia-29ece",
+  storageBucket: "mangia-mangia-29ece.firebasestorage.app",
+  messagingSenderId: "710258693907",
+  appId: "1:710258693907:web:cc787566457d4f71e1ace6",
+};
+const EVENTS_EVERY = 5 * 60000, WEATHER_EVERY = 45 * 60000;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const store = { get(k, d) { try { const v = JSON.parse(localStorage.getItem("cd." + k)); return v == null ? d : v; } catch { return d; } }, set(k, v) { try { localStorage.setItem("cd." + k, JSON.stringify(v)); } catch {} } };
+const isWall = () => matchMedia("(min-width:980px)").matches;
+
+// a setup link like ?worker=https://... saves the address and cleans the URL, so the tablet can be set up with one tap
+{ const q = new URLSearchParams(location.search); if (q.get("worker")) { store.set("worker", q.get("worker").trim()); history.replaceState(null, "", location.pathname); } }
+
+const state = {
+  view: isWall() ? "week" : "today", anchor: C.startOfDay(new Date()), monthAnchor: new Date(), todayKey: C.dayKey(new Date()), calEvents: [], hours: [],
+  fetched: null, calError: "", list: "grocery", board: { grocery: [], todo: [], dinners: {} }, boardMode: "loading",
+  trash: { ...C.TRASH_DEFAULT, ...store.get("trash", {}) },
+};
+const workerUrl = () => (store.get("worker", "") || WORKER_URL).replace(/\/+$/, "");
+
+// ---------- theme + people colors ----------
+$("themeBtn").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next); store.set("theme", next);
+};
+{ // one CSS variable per person, light and dark
+  const light = Object.entries(C.PEOPLE).map(([k, p]) => `--p-${k}:${p.color}`).join(";");
+  const dark = Object.entries(C.PEOPLE).map(([k, p]) => `--p-${k}:${p.dark}`).join(";");
+  const st = document.createElement("style");
+  st.textContent = `:root{${light}} :root[data-theme="dark"]{${dark}} @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){${dark}}}`;
+  document.head.appendChild(st);
+}
+const colorVar = id => `var(--p-${C.PEOPLE[id] ? id : "other"})`;
+
+// ---------- clock and date ----------
+function tick() {
+  const now = new Date();
+  const h = now.getHours() % 12 || 12, m = String(now.getMinutes()).padStart(2, "0");
+  $("clock").innerHTML = `${h}:${m}<small>${now.getHours() < 12 ? "AM" : "PM"}</small>`;
+  $("dateBig").textContent = C.fmtLongDay(now);
+  const hol = C.holidayFor(now);
+  $("dateSmall").textContent = hol && !hol.today ? `${hol.name} in ${hol.days} day${hol.days === 1 ? "" : "s"}` : hol ? `Happy ${hol.name}!` : "";
+  // a new day: move the week back to today and redraw everything
+  if (C.dayKey(now) !== state.todayKey) { state.todayKey = C.dayKey(now); state.anchor = C.startOfDay(now); state.monthAnchor = now; render(); }
+  // 3:30 AM: reload so a new version of the app shows up on the wall without anyone touching it
+  if (now.getHours() === 3 && now.getMinutes() === 30 && now.getSeconds() < 20 && isWall()) location.reload();
+}
+setInterval(tick, 15000); tick();
+
+// ---------- weather ----------
+async function loadWeather() {
+  const s = C.HOME;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m,uv_index&forecast_days=14&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch`;
+  try {
+    const cached = store.get("wx", null);
+    if (cached && Date.now() - cached.at < WEATHER_EVERY) state.hours = cached.hours;
+    else { const om = await (await fetch(url)).json(); state.hours = C.parseOpenMeteo(om); store.set("wx", { at: Date.now(), hours: state.hours }); }
+  } catch { const cached = store.get("wx", null); state.hours = cached ? cached.hours : []; }
+  dressBeavy(); render();
+}
+function dressBeavy() {
+  const now = new Date(), t = now.getTime();
+  const i0 = Math.max(0, state.hours.findIndex(h => h.t + C.HOUR > t));
+  const cur = state.hours[i0];
+  const today = C.dayHours(state.hours, now).filter(h => h.t >= t - C.HOUR);
+  const hol = C.holidayFor(now);
+  if (!cur) { $("beavySays").textContent = "Beavy can't see the sky right now."; $("gearTag").textContent = "No forecast"; return; }
+  const gear = C.gearFor(cur, today);
+  $("beavyImg").src = hol?.art && hol.days <= 13 ? `holiday-${hol.artKey}.webp` : `gear-${gear}.webp`;
+  $("tempNow").innerHTML = `${Math.round(cur.temp)}<sup>°</sup>`;
+  $("gearTag").textContent = C.GEAR_NAME[gear];
+  $("beavySays").innerHTML = `<em>Beavy says:</em> ${esc(C.outlookLine(today.length ? today : C.dayHours(state.hours, C.addDays(now, 1))))}`;
+  $("beavyWear").textContent = `Mia should wear ${C.wearFor(gear, state.hours, now)}`;
+}
+$("beavyImg").onclick = () => { $("beavyImg").classList.remove("wiggle"); void $("beavyImg").offsetWidth; $("beavyImg").classList.add("wiggle"); };
+
+// ---------- events ----------
+async function loadEvents() {
+  const now = new Date(), from = C.addDays(C.startOfDay(now), -45), to = C.addDays(C.startOfDay(now), 120);
+  const url = workerUrl();
+  if (!url) { state.calEvents = C.sampleEvents(now); state.fetched = null; state.calError = ""; state.sample = true; render(); return; }
+  state.sample = false;
+  try {
+    const r = await fetch(url + "/events", { cache: "no-store" });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    let evs = [];
+    for (const c of data.calendars || []) evs = evs.concat(C.icsToEvents(ICAL, c.ics, c.id, from, to));
+    state.calEvents = evs; state.fetched = Date.now();
+    state.calError = (data.errors || []).map(e => `${C.personFor(e.id).name}: ${e.error}`).join(" · ");
+    store.set("evcache", { at: state.fetched, events: evs });
+  } catch (e) {
+    const cached = store.get("evcache", null);
+    if (cached) { state.calEvents = cached.events; state.fetched = cached.at; }
+    state.calError = `Couldn't reach the calendars (${e.message || e}).${cached ? " Showing the last copy." : ""}`;
+  }
+  render();
+}
+// all events for a range: calendars + holidays + trash
+function allEvents(from, to) {
+  return [...state.calEvents, ...C.holidayEvents(from, to), ...C.trashEvents(from, to, state.trash)].filter(e => e.start < to.getTime() && e.end > from.getTime());
+}
+
+// ---------- rendering ----------
+function render() {
+  const now = new Date();
+  renderHeads(now);
+  renderLegend();
+  if (state.view === "week") isWall() ? renderWeek(now) : renderAgenda(now);
+  if (state.view === "month") renderMonth(now);
+  if (state.view === "today") renderAgenda(now, true);
+  renderLists();
+  const st = $("calStatus");
+  if (state.sample) { st.textContent = "Sample events. Open Setup (top right) to connect the family calendars."; st.className = "status"; }
+  else if (state.calError) { st.textContent = state.calError; st.className = "status bad"; }
+  else { st.textContent = state.fetched ? `Calendars updated ${C.fmtClock(state.fetched)}` : "Loading calendars…"; st.className = "status"; }
+}
+function renderHeads(now) {
+  const notes = [];
+  const tr = C.trashNotice(now, state.trash);
+  if (tr) notes.push({ cls: tr.level, ico: tr.recycling ? "♻️" : "🗑️", t: tr.line, s: tr.sub });
+  const hol = C.holidayFor(now);
+  if (hol) notes.push({ cls: hol.today ? "hot" : "note", ico: hol.emoji, t: hol.today ? `Happy ${hol.name}!` : `${hol.name} is ${hol.days === 1 ? "tomorrow" : `in ${hol.days} days`}`, s: "" });
+  const dinner = state.board.dinners?.[C.dayKey(now)];
+  if (dinner) notes.push({ cls: "note", ico: "🍽️", t: `Dinner: ${dinner}`, s: "" });
+  const next = C.pickups(now, 1, state.trash)[0];
+  if (!tr && next) notes.push({ cls: "note", ico: "🗑️", t: `Next trash: ${C.fmtRelativeDay(next.date, now)}`, s: next.recycling ? "Recycling too" : "" });
+  $("notices").innerHTML = notes.map(n => `<div class="notice ${n.cls}"><span class="ico">${n.ico}</span><span class="t">${esc(n.t)}</span>${n.s ? `<span class="s">${esc(n.s)}</span>` : ""}</div>`).join("");
+  // up next (wall): the next few things across everyone
+  const up = C.upNext(allEvents(C.startOfDay(now), C.addDays(now, 8)), now, isWall() ? 7 : 0);
+  let html = "", lastDay = "";
+  for (const e of up) {
+    const dk = C.dayKey(e.start);
+    if (dk !== lastDay) { html += `<div class="day">${esc(C.fmtDay(e.start, now))}</div>`; lastDay = dk; }
+    html += `<div class="row" data-ev="${esc(e.id)}"><span class="when">${e.allDay ? "all day" : esc(C.fmtShortClock(e.start))}</span><span><i class="who" style="--c:${colorVar(e.cal)}"></i>${esc(e.title)}</span></div>`;
+  }
+  $("upnext").innerHTML = html;
+  $("headsHint").textContent = "";
+}
+function renderLegend() {
+  const ids = ["tony", "mom", "mia", "family"];
+  $("legend").innerHTML = ids.map(id => `<span><i style="--c:${colorVar(id)}"></i>${esc(C.PEOPLE[id].name)}</span>`).join("");
+}
+function wxLine(d) {
+  const s = C.daySummary(C.dayHours(state.hours, d));
+  return s ? `<span>${s.glyph}</span><b>${s.hi}°</b><span>/ ${s.lo}°</span>${s.pop >= 30 ? `<span>· ${s.pop}%</span>` : ""}` : "";
+}
+function evHTML(e, cls = "") {
+  const tm = C.chipTime(e);
+  return `<button class="ev ${e.allDay ? "allday" : ""} ${e.cal === "house" ? "house" : ""} ${cls}" type="button" data-ev="${esc(e.id)}" style="--c:${colorVar(e.cal)}">${tm ? `<span class="tm">${esc(tm)}</span>` : ""}<span class="tt">${esc(e.title)}</span></button>`;
+}
+function renderWeek(now) {
+  $("week").hidden = false; $("month").hidden = true; $("apps").hidden = true; $("agenda").hidden = true;
+  const start = state.anchor, end = C.addDays(start, 7), evs = allEvents(start, end);
+  const sameWeek = C.dayKey(start) === C.dayKey(C.startOfDay(now));
+  $("viewTitle").textContent = sameWeek ? "This week" : `${C.MN[start.getMonth()]} ${start.getDate()} – ${C.MN[C.addDays(end, -1).getMonth()]} ${C.addDays(end, -1).getDate()}`;
+  let html = "";
+  for (let i = 0; i < 7; i++) {
+    const d = C.addDays(start, i), diff = C.daysBetween(now, d), list = C.eventsOnDay(evs, d), dk = C.dayKey(d);
+    const dinner = state.board.dinners?.[dk];
+    html += `<div class="col ${diff === 0 ? "today" : diff < 0 ? "past" : ""} ${d.getDay() === 0 || d.getDay() === 6 ? "weekend" : ""}" data-day="${dk}">
+      <div class="dh"><span class="dn">${diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : esc(C.DN[d.getDay()])}</span><span class="dd">${d.getDate()}</span></div>
+      <div class="wx">${wxLine(d)}</div>
+      <div class="evs">${list.length ? list.map(e => evHTML(e)).join("") : `<div class="hint" style="padding:4px 2px">—</div>`}</div>
+      <button class="dinner ${dinner ? "" : "empty"}" type="button" data-dinner="${dk}">🍽️ <b>${dinner ? esc(dinner) : "dinner?"}</b></button>
+    </div>`;
+  }
+  $("week").innerHTML = html;
+}
+function renderAgenda(now, todayOnly = false) {
+  const target = todayOnly ? $("todayAgenda") : $("agenda");
+  if (!todayOnly) { $("week").hidden = true; $("month").hidden = true; $("apps").hidden = true; $("agenda").hidden = false; }
+  const start = todayOnly ? C.startOfDay(now) : state.anchor, days = todayOnly ? 1 : 7, end = C.addDays(start, days), evs = allEvents(start, end);
+  if (!todayOnly) $("viewTitle").textContent = C.dayKey(start) === C.dayKey(C.startOfDay(now)) ? "Next 7 days" : `From ${C.fmtDay(start, now)}`;
+  let html = "";
+  for (let i = 0; i < days; i++) {
+    const d = C.addDays(start, i), list = C.eventsOnDay(evs, d), dk = C.dayKey(d), dinner = state.board.dinners?.[dk];
+    if (!todayOnly) html += `<div class="dayh"><h3>${esc(C.fmtDay(d, now))}</h3><span class="label">${esc(C.DN[d.getDay()])}</span><span class="w">${wxLine(d)}</span></div>`;
+    else html += `<div class="dayh"><h3>Today</h3><span class="w">${wxLine(d)}</span></div>`;
+    html += list.length ? list.map(e => evHTML(e)).join("") : `<div class="empty">Nothing on the calendar</div>`;
+    html += `<button class="dinner ${dinner ? "" : "empty"}" type="button" data-dinner="${dk}">🍽️ <b>${dinner ? esc(dinner) : "dinner?"}</b></button>`;
+  }
+  target.innerHTML = html;
+}
+function renderMonth(now) {
+  $("week").hidden = true; $("month").hidden = false; $("apps").hidden = true; $("agenda").hidden = true;
+  const y = state.monthAnchor.getFullYear(), m = state.monthAnchor.getMonth(), grid = C.monthGrid(y, m);
+  $("viewTitle").textContent = `${C.MNL[m]} ${y}`;
+  const evs = allEvents(grid[0], C.addDays(grid[41], 1));
+  let html = C.DN.map(d => `<div class="dow">${d}</div>`).join("");
+  for (const d of grid) {
+    const list = C.eventsOnDay(evs, d), diff = C.daysBetween(now, d), max = 3;
+    html += `<button class="cell ${d.getMonth() !== m ? "other" : ""} ${diff === 0 ? "today" : ""}" type="button" data-day="${C.dayKey(d)}"><span class="num">${d.getDate()}</span>
+      ${list.slice(0, max).map(e => `<span class="mini" style="--c:${colorVar(e.cal)}">${esc(e.title)}</span>`).join("")}
+      ${list.length > max ? `<span class="more">+${list.length - max} more</span>` : ""}
+      <span class="dots">${list.slice(0, 6).map(e => `<i style="--c:${colorVar(e.cal)}"></i>`).join("")}</span></button>`;
+  }
+  $("month").innerHTML = html;
+}
+function renderApps() {
+  $("week").hidden = true; $("month").hidden = true; $("apps").hidden = false; $("agenda").hidden = true;
+  $("viewTitle").textContent = "The other apps";
+  if (!$("appFrame").src) $("appTabs").querySelector(".tab").click();
+}
+
+// ---------- view switching ----------
+function setView(v) {
+  state.view = v; document.body.dataset.view = v;
+  for (const b of document.querySelectorAll("#viewSeg [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === v));
+  for (const b of document.querySelectorAll(".nav [data-nav]")) { if (b.dataset.nav === v) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); }
+  $("navSeg").hidden = v === "apps" || v === "lists" || v === "today";
+  if (v === "apps") renderApps(); else render();
+  if (!isWall()) window.scrollTo({ top: 0 });
+}
+$("viewSeg").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) setView(b.dataset.view); });
+document.querySelector(".nav").addEventListener("click", e => { const b = e.target.closest("[data-nav]"); if (b) setView(b.dataset.nav); });
+$("prevBtn").onclick = () => { if (state.view === "month") state.monthAnchor = new Date(state.monthAnchor.getFullYear(), state.monthAnchor.getMonth() - 1, 1); else state.anchor = C.addDays(state.anchor, -7); render(); };
+$("nextBtn").onclick = () => { if (state.view === "month") state.monthAnchor = new Date(state.monthAnchor.getFullYear(), state.monthAnchor.getMonth() + 1, 1); else state.anchor = C.addDays(state.anchor, 7); render(); };
+$("todayBtn").onclick = () => { state.anchor = C.startOfDay(new Date()); state.monthAnchor = new Date(); render(); };
+$("appTabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-app]"); if (!b) return;
+  for (const x of $("appTabs").querySelectorAll(".tab")) x.setAttribute("aria-pressed", String(x === b));
+  $("appFrame").src = b.dataset.app;
+});
+matchMedia("(min-width:980px)").addEventListener("change", () => { if (isWall() && (state.view === "today" || state.view === "lists")) state.view = "week"; setView(state.view); });
+
+// ---------- event + day details ----------
+function findEvent(id) { return allEvents(C.addDays(new Date(), -60), C.addDays(new Date(), 130)).find(e => e.id === id); }
+function gcalAddLink(d) {
+  const k = C.dayKey(d).replace(/-/g, "");
+  return `https://calendar.google.com/calendar/u/0/r/eventedit?dates=${k}T180000/${k}T190000`;
+}
+function showEvent(e) {
+  const p = C.personFor(e.cal);
+  $("evBody").innerHTML = `<span class="pill" style="--c:${colorVar(e.cal)}">${esc(p.name)}</span><h2>${esc(e.title)}</h2>
+    <div class="meta"><b>${esc(C.fmtLongDay(e.start))}</b> · ${esc(C.timeRange(e))}</div>
+    ${e.location ? `<div class="meta">📍 ${esc(e.location)}</div>` : ""}
+    ${e.note ? `<div class="meta">${esc(e.note)}</div>` : ""}
+    ${e.desc ? `<p>${esc(e.desc)}</p>` : ""}
+    ${e.sample ? `<div class="meta">This is a sample event. Connect the calendars in Setup to see the real ones.</div>` : ""}
+    <div class="acts">${e.location ? `<a class="btn quiet small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}">Directions</a>` : ""}<button class="btn small" type="button" onclick="this.closest('dialog').close()">Close</button></div>`;
+  $("evDialog").showModal();
+}
+function showDay(dk) {
+  const d = C.fromKey(dk), now = new Date(), list = C.eventsOnDay(allEvents(d, C.addDays(d, 1)), d), dinner = state.board.dinners?.[dk];
+  $("dayBody").innerHTML = `<h2>${esc(C.fmtLongDay(d))}</h2><div class="meta">${C.fmtDay(d, now)} · ${wxLine(d) || "no forecast yet"}</div>
+    <div class="daylist">${list.length ? list.map(e => evHTML(e)).join("") : `<div class="empty">Nothing on the calendar</div>`}</div>
+    <button class="dinner ${dinner ? "" : "empty"}" type="button" data-dinner="${dk}">🍽️ <b>${dinner ? esc(dinner) : "dinner?"}</b></button>
+    <div class="acts"><a class="btn quiet small phone-only" target="_blank" rel="noopener" href="${gcalAddLink(d)}">+ Add to Google Calendar</a><button class="btn small" type="button" onclick="this.closest('dialog').close()">Close</button></div>`;
+  $("dayDialog").showModal();
+}
+document.addEventListener("click", e => {
+  const ev = e.target.closest("[data-ev]"); if (ev) { const x = findEvent(ev.dataset.ev); if (x) showEvent(x); return; }
+  const dn = e.target.closest("[data-dinner]"); if (dn) { askDinner(dn.dataset.dinner); return; }
+  const cell = e.target.closest(".cell[data-day]"); if (cell) { showDay(cell.dataset.day); return; }
+  const col = e.target.closest(".col[data-day] .dh"); if (col) { showDay(col.closest(".col").dataset.day); return; }
+});
+for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", e => { if (e.target === d) d.close(); });
+
+// ---------- lists (Firestore, shared with everyone's phone; falls back to this device if Firestore can't be reached) ----------
+let db = null, F = null, boardRef = null;
+async function loadFirebase() {
+  try {
+    const [appMod, fsMod] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"),
+    ]);
+    F = fsMod; db = F.getFirestore(appMod.initializeApp(FIREBASE));
+    boardRef = F.doc(db, "daily_board", "main");
+    F.onSnapshot(boardRef, snap => {
+      state.board = { grocery: [], todo: [], dinners: {}, ...(snap.exists() ? snap.data() : {}) };
+      state.boardMode = "shared"; store.set("board", state.board); render();
+    }, err => { state.boardMode = "local"; state.boardErr = err.code || String(err); state.board = store.get("board", state.board); render(); });
+  } catch (e) { state.boardMode = "local"; state.boardErr = "offline"; state.board = store.get("board", state.board); render(); }
+}
+async function saveBoard(patch) {
+  state.board = { ...state.board, ...patch }; store.set("board", state.board); render();
+  if (state.boardMode === "shared" && F) { try { await F.setDoc(boardRef, { ...patch, updated: Date.now() }, { merge: true }); } catch (e) { state.boardMode = "local"; state.boardErr = e.code || String(e); render(); } }
+}
+$("listTabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-list]"); if (!b) return;
+  state.list = b.dataset.list;
+  for (const x of $("listTabs").querySelectorAll(".tab")) x.setAttribute("aria-pressed", String(x === b));
+  renderLists();
+});
+$("addForm").onsubmit = e => {
+  e.preventDefault();
+  const t = $("addInput").value.trim(); if (!t) return;
+  const key = state.list, items = [...(state.board[key] || []), { t, done: false, at: Date.now() }];
+  $("addInput").value = ""; saveBoard({ [key]: items });
+};
+$("clearDone").onclick = () => { const key = state.list; if (key === "dinners") return; saveBoard({ [key]: (state.board[key] || []).filter(i => !i.done) }); };
+$("items").addEventListener("click", e => {
+  const row = e.target.closest(".item"); if (!row) return;
+  const key = state.list, items = [...(state.board[key] || [])], i = +row.dataset.i;
+  if (e.target.closest(".del")) items.splice(i, 1); else items[i] = { ...items[i], done: !items[i].done };
+  saveBoard({ [key]: items });
+});
+function renderLists() {
+  const g = state.board.grocery || [], t = state.board.todo || [];
+  $("nGrocery").textContent = g.filter(i => !i.done).length || ""; $("nTodo").textContent = t.filter(i => !i.done).length || "";
+  const isDinners = state.list === "dinners";
+  $("items").hidden = isDinners; $("addForm").hidden = isDinners; $("clearDone").hidden = isDinners; $("dinners").hidden = !isDinners;
+  $("addInput").placeholder = state.list === "grocery" ? "Add to grocery…" : "Add a to-do…";
+  if (isDinners) {
+    const now = new Date(); let html = "";
+    for (let i = 0; i < 10; i++) { const d = C.addDays(C.startOfDay(now), i), dk = C.dayKey(d); html += `<div class="row"><span class="d">${esc(C.fmtDay(d, now))}</span><input type="text" maxlength="80" data-dk="${dk}" value="${esc(state.board.dinners?.[dk] || "")}" placeholder="…"></div>`; }
+    $("dinners").innerHTML = html;
+  } else {
+    const items = state.board[state.list] || [];
+    $("items").innerHTML = items.length ? items.map((it, i) => `<div class="item ${it.done ? "done" : ""}" data-i="${i}"><button class="chk" type="button" aria-label="Done">${it.done ? "✓" : ""}</button><span class="tx">${esc(it.t)}</span><button class="del" type="button" aria-label="Remove">✕</button></div>`).join("") : `<div class="empty">${state.list === "grocery" ? "Nothing on the list" : "All caught up"}</div>`;
+  }
+  const st = $("listStatus");
+  st.textContent = state.boardMode === "shared" ? "" : state.boardMode === "loading" ? "Connecting…" : `Not synced (${state.boardErr || "offline"}): these lists are only on this device right now.`;
+  st.className = state.boardMode === "local" ? "status bad" : "status";
+}
+$("dinners").addEventListener("change", e => { const inp = e.target.closest("input[data-dk]"); if (!inp) return; const dinners = { ...(state.board.dinners || {}) }; const v = inp.value.trim(); if (v) dinners[inp.dataset.dk] = v; else delete dinners[inp.dataset.dk]; saveBoard({ dinners }); });
+function askDinner(dk) {
+  $("dinnerTitle").textContent = `Dinner ${C.fmtDay(C.fromKey(dk)).toLowerCase() === "today" ? "tonight" : C.fmtDay(C.fromKey(dk))}`;
+  $("dinnerInput").value = state.board.dinners?.[dk] || "";
+  $("dinnerForm").onsubmit = e => {
+    const v = e.submitter?.value; if (v === "cancel") return;
+    const dinners = { ...(state.board.dinners || {}) }, txt = $("dinnerInput").value.trim();
+    if (v === "clear" || !txt) delete dinners[dk]; else dinners[dk] = txt;
+    saveBoard({ dinners });
+  };
+  $("dinnerDialog").showModal(); setTimeout(() => $("dinnerInput").focus(), 50);
+}
+
+// ---------- setup ----------
+$("setBtn").onclick = () => {
+  $("setWorker").value = store.get("worker", "") || WORKER_URL;
+  $("setTrashDay").value = String(state.trash.day); $("setRecycle").value = state.trash.recycle; $("setShift").value = state.trash.shift ? "1" : "0";
+  $("setDialog").showModal();
+};
+$("setForm").onsubmit = e => {
+  if (e.submitter?.value !== "save") return;
+  store.set("worker", $("setWorker").value.trim());
+  const rec = $("setRecycle").value;
+  state.trash = { ...state.trash, day: +$("setTrashDay").value, recycle: rec, shift: $("setShift").value === "1", recycleAnchor: rec === "odd" ? C.dayKey(C.addDays(new Date(), 7)) : C.dayKey(new Date()) };
+  store.set("trash", state.trash);
+  loadEvents();
+};
+$("reloadBtn").onclick = () => location.reload();
+
+// ---------- go ----------
+setView(state.view);
+loadWeather(); loadEvents(); loadFirebase();
+setInterval(loadEvents, EVENTS_EVERY); setInterval(loadWeather, WEATHER_EVERY);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { loadEvents(); tick(); } });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
