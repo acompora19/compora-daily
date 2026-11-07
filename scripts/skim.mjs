@@ -68,15 +68,15 @@ async function skimInbox(label, user, pass) {
       const from = (env.from || []).map(a => `${a.name || ""} <${a.address || ""}>`).join(", ");
       const subject = env.subject || "(no subject)";
       const id = mailId(env.messageId, `${subject}|${env.date}`);
-      out.seen.push(id);
-      if (skipSender(from)) continue;
+      if (skipSender(from)) { out.seen.push(id); continue; }
       let parsed;
-      try { parsed = await simpleParser(msg.source); } catch { continue; }
+      try { parsed = await simpleParser(msg.source); } catch { out.seen.push(id); continue; }
       const body = tidyBody(parsed.text || htmlToText(parsed.html || parsed.textAsHtml || ""));
-      if (!looksDated(subject + "\n" + body)) continue;
+      if (!looksDated(subject + "\n" + body)) { out.seen.push(id); continue; }
       out.asked++;
       try {
         const res = await ask("email", { text: body, from, subject });
+        out.seen.push(id);   // only counts as seen once the AI actually read it; errors get another try next run
         for (const ev of res.events || []) {
           out.items.push({ id: `${id}-${ev.date}-${ev.title}`.replace(/[^\w-]+/g, "_").slice(0, 80), mail: id, title: ev.title, date: ev.date, time: ev.time, end: ev.end,
             location: ev.location, who: ev.who, note: ev.note, from: (env.from?.[0]?.name || env.from?.[0]?.address || "").slice(0, 60), subject: subject.slice(0, 100),
@@ -103,6 +103,7 @@ for (const b of boxes) {
 }
 
 const doc = await readDoc("daily_inbox", "main");
+if (process.env.SKIM_RESET === "true") { log("   reset: forgetting which emails were seen before"); doc.seen = []; }
 const merged = mergeInbox(doc, found, seen);
 await patchDoc("daily_inbox", "main", { items: merged.items, seen: merged.seen, ran: Date.now(), today });
 log(`   saved: ${merged.added} new pending item(s), ${merged.items.length} in the tray`);

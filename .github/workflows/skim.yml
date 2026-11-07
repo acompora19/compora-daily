@@ -6,6 +6,11 @@ on:
     - cron: "23 5 * * *"    # 12:23 AM Eastern (1:23 AM in summer)
     - cron: "23 17 * * *"   # 12:23 PM Eastern
   workflow_dispatch:
+    inputs:
+      reset:
+        description: "Forget which emails were already seen (re-scan the last 3 days)"
+        type: boolean
+        default: false
 jobs:
   skim:
     runs-on: ubuntu-latest
@@ -23,3 +28,4 @@ jobs:
           GMAIL_3: ${{ secrets.GMAIL_3 }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
           WORKER_KEY: ${{ secrets.WORKER_KEY }}
+          SKIM_RESET: ${{ inputs.reset }}
