@@ -8,7 +8,7 @@
 // Secrets it needs (repo → Settings → Secrets and variables → Actions):
 //   GMAIL_1 = "you@gmail.com:abcd efgh ijkl mnop"   (address, colon, the 16-character App Password)
 //   GMAIL_2 = the same for the second inbox (optional; GMAIL_3 too)
-//   WORKER_URL = https://compora-daily.YOURNAME.workers.dev
+//   WORKER_URL = only if the Worker moves; it defaults to https://compora-daily.acompora19.workers.dev
 //   WORKER_KEY = the same long random string you put on the Worker
 //   FIREBASE_KEY = the Firebase web API key (the apiKey in index.html; it's not secret, but keeping it here keeps the script tidy)
 //
@@ -20,14 +20,14 @@ import { localDate, mailId, htmlToText, tidyBody, looksDated, skipSender, toFs, 
 
 const PROJECT = process.env.FIREBASE_PROJECT || "mangia-mangia-29ece";
 const KEY = process.env.FIREBASE_KEY || "AIzaSyDaBcD1gNsi56k4_w2NV8eWevv5EltjwOk";
-const WORKER = (process.env.WORKER_URL || "").replace(/\/+$/, "");
+const WORKER = (process.env.WORKER_URL || "https://compora-daily.acompora19.workers.dev").replace(/\/+$/, "");
 const WKEY = process.env.WORKER_KEY || "";
 const DAYS = Number(process.env.SKIM_DAYS || 3);        // how far back to look each run (seen-list stops repeats)
 const MAX_PER_BOX = Number(process.env.SKIM_MAX || 40); // newest N per inbox per run
 const today = localDate();
 const log = (...a) => console.log(...a);
 
-if (!WORKER || !WKEY) { console.error("WORKER_URL and WORKER_KEY are required"); process.exit(1); }
+if (!WKEY) { console.error("WORKER_KEY secret is missing (repo → Settings → Secrets and variables → Actions)"); process.exit(1); }
 
 // ---------- Firestore (REST, no SDK) ----------
 const docUrl = (col, id) => `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents/${col}/${id}?key=${KEY}`;

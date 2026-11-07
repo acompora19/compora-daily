@@ -55,7 +55,6 @@ Open the setup link that carries the house's Columbus place ID (`…/compora-dai
 2. GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**, one at a time:
    - `GMAIL_1` = `you@gmail.com:abcd efgh ijkl mnop` (the address, a colon, the app password; spaces are fine)
    - `GMAIL_2` = the same for the other inbox
-   - `WORKER_URL` = the Worker's address from step 2
    - `WORKER_KEY` = the same random string you put on the Worker
 3. **Actions** tab → **Skim email** → **Run workflow**. The log says how many emails it looked at and what it found. Finds wait in the "Found in email" tray until someone taps Approve; Deny drops them. After that it runs itself at 12:23 AM and 12:23 PM.
 4. Finds show up in the "Found in email" tray on the board within a minute (they come through Firestore, so step 3 above has to be done).
