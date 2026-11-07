@@ -1,7 +1,7 @@
 // Compora Daily service worker: caches the app so the wall tablet keeps working if the Wi-Fi hiccups.
 // Bump VERSION on every release so phones and the tablet pick up the new files.
-const VERSION = "cd-v5";
-const SHELL = ["./", "index.html", "daily-core.js", "vendor/ical.min.js", "beaver-portrait.png", "icon-64.png", "icon-180.png", "icon-512.png", "manifest.json",
+const VERSION = "cd-v6";
+const SHELL = ["./", "index.html", "daily-core.js", "vendor/ical.min.js", "logo.png", "icon-64.png", "icon-180.png", "icon-512.png", "manifest.json",
   "gear-extreme.webp", "gear-fall.webp", "gear-hot.webp", "gear-rainy.webp", "gear-snowy.webp", "gear-spring.webp", "gear-sunny.webp", "gear-windy.webp",
   "holiday-christmas.webp", "holiday-easter.webp", "holiday-halloween.webp", "holiday-july4.webp", "holiday-newyear.webp", "holiday-stpatrick.webp", "holiday-thanksgiving.webp", "holiday-valentine.webp"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting())); });
