@@ -529,13 +529,13 @@ function renderTray(now) {
   const items = (state.inbox.items || []).filter(it => it.status !== "done" && it.date >= C.dayKey(now)).slice(0, 6);
   $("tray").hidden = !items.length;
   if (!items.length) return;
-  $("tray").innerHTML = `<div class="th"><h3>Found in email</h3><span class="hint">tap ✓ to put it on the board</span></div>` + items.map(it => {
+  $("tray").innerHTML = `<div class="th"><h3>Found in email</h3><span class="hint">nothing goes on the calendar until it's approved</span></div>` + items.map(it => {
     const ev = C.foundToEvent(it);
     const when = ev ? `${C.fmtDay(ev.start, now)}${ev.allDay ? "" : " · " + C.fmtClock(ev.start)}` : it.date;
     return `<div class="find" style="--c:${colorVar(it.who && C.PEOPLE[it.who] ? it.who : "mail")}" data-find="${esc(it.id)}">
       <div class="ft">${esc(it.title)}</div>
       <div class="fm">${esc(when)}${it.location ? " · " + esc(it.location) : ""} · from ${esc(it.from || "email")}</div>
-      <div class="fa"><button class="yes" type="button" data-accept="${esc(it.id)}" aria-label="Accept">✓ Add</button><button type="button" data-dismiss="${esc(it.id)}" aria-label="Not an event">✕</button></div>
+      <div class="fa"><button class="yes" type="button" data-accept="${esc(it.id)}">✓ Approve</button><button type="button" data-dismiss="${esc(it.id)}">✕ Deny</button></div>
     </div>`;
   }).join("");
 }

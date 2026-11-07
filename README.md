@@ -57,7 +57,7 @@ Setup → pick the pickup day and the recycling schedule. The default is Monday,
    - `GMAIL_2` = the same for the other inbox
    - `WORKER_URL` = the Worker's address from step 2
    - `WORKER_KEY` = the same random string you put on the Worker
-3. **Actions** tab → **Skim email & town** → **Run workflow**. The log says how many emails it looked at and what it found. After that it runs itself at 12:23 AM and 12:23 PM.
+3. **Actions** tab → **Skim email & town** → **Run workflow**. The log says how many emails it looked at and what it found. Finds wait in the "Found in email" tray until someone taps Approve; Deny drops them. After that it runs itself at 12:23 AM and 12:23 PM.
 4. Finds show up in the "Found in email" tray on the board within a minute (they come through Firestore, so step 3 above has to be done).
 
 What it looks at: mail from the last 3 days, minus Gmail's Promotions/Social/Forums tabs and a short list of robot senders, and only emails that mention a date at all. Each of those goes to the Worker's AI, which answers with the event or nothing. The email text itself is never stored; only the find (title, date, who it's from).

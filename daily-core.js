@@ -109,8 +109,9 @@ function holidayEvents(fromDate, toDate) {
 // cfg: { day: 0-6 (pickup weekday), recycle: "same" | "even" | "odd" | "none", recycleAnchor: "YYYY-MM-DD", shift: true, moved: { "YYYY-MM-DD (week's Monday)": "YYYY-MM-DD" } }
 // "even"/"odd": recycling every other week; the anchor is a date recycling WAS picked up, so the app can count weeks from it.
 // "moved": weeks where the city/hauler announced a different pickup date (filled in from the city's alerts by the skimmer).
-// Default is the City of Canal Winchester's contract: Rumpke, Thursdays, recycling every week, pickup slides a day when
-// a holiday falls earlier in the week (canalwinchesterohio.gov/477/Trash-and-Recycling-Service).
+// Default: Thursdays, recycling every week, pickup slides a day when a holiday falls on or before pickup day that week.
+// That's both the City of Canal Winchester's Rumpke contract (canalwinchesterohio.gov/477/Trash-and-Recycling-Service)
+// and Madison Township's Local Waste Services contract (localwasteservices.com/service-guidelines/madison-township).
 const TRASH_DEFAULT = { day: 4, recycle: "same", recycleAnchor: "2026-11-05", shift: true, moved: {} };
 // Monday of the week a date is in.
 function weekStart(d) { d = startOfDay(d); return addDays(d, -((d.getDay() + 6) % 7)); }
