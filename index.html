@@ -228,6 +228,9 @@ dialog h2{font-size:22px;margin-bottom:6px}
 .find .fa{display:flex;gap:5px;grid-row:1/3;grid-column:2;align-self:center}
 .find .fa button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:3px;padding:5px 8px;font-size:12.5px;font-weight:500;white-space:nowrap}
 .find .fa button.yes{border-color:var(--green);color:var(--green)}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:4px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:20;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (min-width:980px){.toast{bottom:24px}}
 .status{font-size:12px;color:var(--muted);text-align:center;padding-top:6px}
 .status.bad{color:var(--red)}
 .foot{font-size:12px;color:var(--muted);text-align:center;border-top:3px double var(--line);padding-top:10px}
@@ -566,9 +569,33 @@ function renderTray(now) {
 async function settleFind(id, accept) {
   const it = (state.inbox.items || []).find(x => x.id === id); if (!it) return;
   state.inbox = { ...state.inbox, items: state.inbox.items.filter(x => x.id !== id) }; store.set("inbox", state.inbox);
-  if (accept) await saveBoard({ extras: [...(state.board.extras || []).filter(x => x.id !== it.id), { ...it, status: "accepted", accepted: Date.now() }].slice(-200) });
-  else render();
+  if (accept) {
+    // first choice: straight into Google Calendar (it shows up on the board through the calendar feed);
+    // fallback: keep it on the board only, if the calendar bridge isn't set up or is down
+    const ev = C.foundToEvent(it);
+    const res = ev ? await addToGoogle(ev, it.who) : { error: "bad date" };
+    if (res.ok) { toast(`Added to the ${res.calendar || "Family"} calendar`); render(); setTimeout(loadEvents, 1500); setTimeout(loadEvents, 20000); }
+    else {
+      await saveBoard({ extras: [...(state.board.extras || []).filter(x => x.id !== it.id), { ...it, status: "accepted", accepted: Date.now() }].slice(-200) });
+      toast(res.error && /GCAL_HOOK/.test(res.error) ? "On the board (Google Calendar bridge not set up yet)" : `On the board only: ${res.error || "couldn't reach Google Calendar"}`);
+    }
+  } else render();
   if (F && inboxRef) { try { await F.updateDoc(inboxRef, { items: F.arrayRemove(it) }); } catch (e) { console.warn("inbox update", e); } }
+}
+// Ask the Worker to put an event on Google Calendar (via the Apps Script bridge). Resolves to { ok, calendar } or { error }.
+async function addToGoogle(ev, who) {
+  const url = workerUrl(); if (!url) return { error: "No Worker address" };
+  const body = { title: ev.title, allDay: !!ev.allDay, date: C.dayKey(ev.start), start: new Date(ev.start).toISOString(), end: new Date(ev.end).toISOString(), location: ev.location || "", desc: (ev.desc || "").slice(0, 500), who: who || ev.cal || "family" };
+  try {
+    const r = await fetch(url + "/calendar/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    return j.ok ? j : { error: j.error || `HTTP ${r.status}` };
+  } catch (e) { return { error: String(e.message || e) }; }
+}
+let toastTimer;
+function toast(msg) {
+  let el = $("toast"); if (!el) { el = document.createElement("div"); el.id = "toast"; el.className = "toast"; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
 }
 function renderLegend() {
   const ids = ["tony", "mom", "mia", "family"];
@@ -680,7 +707,7 @@ function showEvent(e) {
     ${e.sample ? `<div class="meta">This is a sample event. Connect the calendars in Setup to see the real ones.</div>` : ""}
     <div class="acts">${e.location ? `<a class="btn quiet small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}">Directions</a>` : ""}
     ${e.url && /^https?:/.test(e.url) ? `<a class="btn quiet small" target="_blank" rel="noopener" href="${esc(e.url)}">Details</a>` : ""}
-    ${e.found ? `<a class="btn quiet small phone-only" target="_blank" rel="noopener" href="${gcalEventLink(e)}">+ Google Calendar</a><button class="btn quiet small" type="button" data-unaccept="${esc(e.id.replace(/^found-/, ""))}">Remove</button>` : ""}
+    ${e.found ? `<button class="btn quiet small" type="button" data-togoogle="${esc(e.id.replace(/^found-/, ""))}">→ Google Calendar</button><button class="btn quiet small" type="button" data-unaccept="${esc(e.id.replace(/^found-/, ""))}">Remove</button>` : ""}
     <button class="btn small" type="button" onclick="this.closest('dialog').close()">Close</button></div>`;
   $("evDialog").showModal();
 }
@@ -696,6 +723,15 @@ document.addEventListener("click", e => {
   const acc = e.target.closest("[data-accept]"); if (acc) { settleFind(acc.dataset.accept, true); return; }
   const dis = e.target.closest("[data-dismiss]"); if (dis) { settleFind(dis.dataset.dismiss, false); return; }
   const un = e.target.closest("[data-unaccept]"); if (un) { saveBoard({ extras: (state.board.extras || []).filter(x => x.id !== un.dataset.unaccept) }); un.closest("dialog").close(); return; }
+  const tg = e.target.closest("[data-togoogle]"); if (tg) {
+    const it = (state.board.extras || []).find(x => x.id === tg.dataset.togoogle); const ev = it && C.foundToEvent(it); if (!ev) return;
+    tg.disabled = true; tg.textContent = "Adding…";
+    addToGoogle(ev, it.who).then(res => {
+      if (res.ok) { saveBoard({ extras: (state.board.extras || []).filter(x => x.id !== it.id) }); toast(`Added to the ${res.calendar || "Family"} calendar`); tg.closest("dialog").close(); setTimeout(loadEvents, 1500); setTimeout(loadEvents, 20000); }
+      else { tg.disabled = false; tg.textContent = "→ Google Calendar"; toast(res.error || "Couldn't reach Google Calendar"); }
+    });
+    return;
+  }
   const ev = e.target.closest("[data-ev]"); if (ev) { const x = findEvent(ev.dataset.ev); if (x) showEvent(x); return; }
   const dn = e.target.closest("[data-dinner]"); if (dn) { askDinner(dn.dataset.dinner); return; }
   const cell = e.target.closest(".cell[data-day]"); if (cell) { showDay(cell.dataset.day); return; }

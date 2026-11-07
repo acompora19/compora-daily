@@ -9,7 +9,7 @@ Live: https://acompora19.github.io/compora-daily/
 - **Google Calendar is where events live.** Tony, Mom, Mia and a shared "Family" calendar. Add things on your phone like you do now; the wall picks them up within five minutes.
 - **A tiny Cloudflare Worker** (`worker/worker.js`) holds the calendars' secret iCal links and hands the calendar text to the page. The links never go in this repo.
 - **Trash days come from the City of Columbus.** The house is in Columbus's Gold trash zone, whose pickup day rotates a weekday later after every city holiday. The board reads the city's own schedule for the address (the ReCollect service behind the PickUp CBUS app, by place ID set in Setup): trash, recycling (Tuesdays) and yard waste (every other Tuesday). If that's blank or runs out, a simple weekday rule in `daily-core.js` fills in.
-- **The skimmer** (`scripts/skim.mjs`, run by GitHub twice a day) reads both inboxes, asks the Worker's free AI for anything with a date, and puts finds in a "Found in email" tray on the board. You tap ✓ to put one on the calendar or ✕ to drop it. Nothing goes on by itself.
+- **The skimmer** (`scripts/skim.mjs`, run by GitHub twice a day) reads both inboxes, asks the Worker's free AI for anything with a date, and puts finds in a "Found in email" tray on the board. You tap ✓ Approve to put one on Google Calendar (through the Apps Script bridge in `gcal/Code.gs`) or ✕ Deny to drop it. Nothing goes on by itself.
 - **Town events** come from Beavy's Day Out's `data/events.json` (it already pulls the City of Canal Winchester calendar), filtered to Canal Winchester, in their own "Town" color. Turn off in Setup.
 - **Lists live in Firestore** (the shared Firebase project), so the tablet and every phone see the same grocery list.
 - **Weather** comes from Open-Meteo with no key; Beavy's outfit rules are copied from Mia's Almanac.
@@ -19,7 +19,8 @@ Live: https://acompora19.github.io/compora-daily/
 
 - `index.html` is the whole app. `daily-core.js` holds the date, trash, holiday, calendar and weather logic (tests in `test/`).
 - `vendor/ical.min.js` is [ical.js](https://github.com/kewisch/ical.js) (MPL-2.0), which reads Google's calendar format, repeats and all.
-- `worker/worker.js` is the Cloudflare Worker: `/events` proxies the calendars, `/extract` is the AI the skimmer calls. Paste it into a new Worker; see below.
+- `worker/worker.js` is the Cloudflare Worker: `/events` proxies the calendars, `/extract` is the AI the skimmer calls, `/calendar/add` hands approved finds to the Google Calendar bridge. Paste it into a new Worker; see below.
+- `gcal/Code.gs` is a tiny Google Apps Script web app that adds an event to the family's Google Calendar. It runs as Tony's Google account, so no OAuth setup is needed.
 - `scripts/skim.mjs` + `scripts/skim-lib.mjs` are the email/town skimmer; `.github/workflows/skim.yml` runs it.
 - `firestore.rules` is the full rule set for the shared Firebase project with the `daily_board` collection added.
 - `sw.js` and `manifest.json` make it install to a home screen and keep working offline. Bump `VERSION` in `sw.js` on every release.
@@ -61,7 +62,14 @@ Open the setup link that carries the house's Columbus place ID (`…/compora-dai
 
 What it looks at: mail from the last 3 days, minus Gmail's Promotions/Social/Forums tabs and a short list of robot senders, and only emails that mention a date at all. Each of those goes to the Worker's AI, which answers with the event or nothing. The email text itself is never stored; only the find (title, date, who it's from).
 
-### 6. The tablet
+### 6. Approve → Google Calendar (the bridge)
+1. https://script.google.com → **New project** → delete what's there, paste all of `gcal/Code.gs`. Set `KEY` to the same `WORKER_KEY` string. Name the project "Compora Daily calendar".
+2. **Deploy → New deployment** → type **Web app** → Execute as **Me**, Who has access **Anyone** → Deploy → authorize when asked → copy the **Web app URL** (ends in `/exec`).
+3. Cloudflare Worker → **Settings → Variables and Secrets** → Add, type **Secret**, `GCAL_HOOK` = that URL → Deploy.
+4. Tap ✓ Approve on a find; it lands on the Family calendar (or Tony's, when the find is about Tony) and shows up on the board from there. If the bridge isn't set up, Approve keeps the find on the board only and says so.
+   Changing `Code.gs` later needs **Deploy → Manage deployments → edit → New version** for the URL to pick it up.
+
+### 7. The tablet
 Any Android tablet with a browser. Install **Fully Kiosk Browser**, set the Start URL to the site, turn on "keep screen on", "hide status bar" and "reload on screen on", and set "return to start URL after idle" to a few minutes so it comes back from the Apps tab on its own. The page reloads itself at 3:30 AM every day to pick up updates.
 
 ## Adding events
@@ -71,7 +79,7 @@ Any Android tablet with a browser. Install **Fully Kiosk Browser**, set the Star
 - Google's "Events from Gmail" setting (Calendar → Settings → Events from Gmail) drops flights, reservations and appointments in on its own.
 
 ## Next up (not built yet)
-- Adding events from the tablet itself (needs a Google sign-in on the Worker). For now, ✓ Add puts a find on the board, and on a phone the event's "+ Google Calendar" button opens it pre-filled.
+- Adding events typed on the tablet itself (the bridge in `gcal/Code.gs` could take them; it just needs a form).
 - Destination Canal Winchester's downtown calendar (business.canalwinchester.com) blocks robots; if it ever offers a feed, add it to Day Out's sources and it flows through.
 - Town events come from Day Out's City of Canal Winchester feed. Columbus-side neighborhood events could be added the same way.
 - Tap-to-talk: "Mia's dentist Thursday at 3".

@@ -5,11 +5,14 @@
 //                  text to the page. Nothing is stored.
 //   POST /extract  The email skimmer (a GitHub Action) sends the text of an email or a city alert here; the Worker's
 //                  free AI pulls out any dated events and answers with JSON. Needs the shared key.
+//   POST /calendar/add  The board sends an approved find here; the Worker passes it to the Google Apps Script bridge
+//                  (gcal/Code.gs) which adds it to the family's Google Calendar.
 //
 // SETTINGS (Worker → Settings → Variables and Secrets), all type "Secret":
 //   CAL_TONY    = https://calendar.google.com/calendar/ical/....../private-....../basic.ics
 //   CAL_MOM, CAL_MIA, CAL_FAMILY = the same for each calendar
 //   WORKER_KEY  = any long random string; the same value goes in the GitHub repo's secrets so only the skimmer can use /extract
+//   GCAL_HOOK   = the Apps Script web app URL from gcal/Code.gs (https://script.google.com/macros/s/.../exec)
 // Optional, type "Text":
 //   ALLOWED_ORIGINS = https://acompora19.github.io,http://localhost:8000   (who may call /events; default is the GitHub Pages site)
 // BINDING (Worker → Settings → Bindings → Add → Workers AI): variable name AI
@@ -37,6 +40,7 @@ export default {
 
     const url = new URL(request.url);
     if (url.pathname === "/extract") return extract(request, env, cors);
+    if (url.pathname === "/calendar/add") return calendarAdd(request, env, cors);
     if (url.pathname === "/" || url.pathname === "/events") return events(request, env, ctx, cors, url);
     return new Response("Compora Daily Worker. GET /events, POST /extract", { status: 404, headers: cors });
   },
@@ -130,6 +134,24 @@ Answer with JSON only.`;
   }
   const mv = out?.trash?.moved_to;
   return json({ trash: { moved_to: /^\d{4}-\d{2}-\d{2}$/.test(mv || "") ? mv : null, note: String(out?.trash?.note || "").slice(0, 200) } }, 200, cors);
+}
+
+// POST /calendar/add  { title, allDay, date | start, end, location, desc, who, calendar } → whatever the Apps Script answers
+async function calendarAdd(request, env, cors) {
+  if (request.method !== "POST") return json({ error: "POST only" }, 405, cors);
+  if (!env.GCAL_HOOK) return json({ error: "No GCAL_HOOK yet. Add the Apps Script web app URL as a secret on the Worker." }, 500, cors);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "bad json" }, 400, cors); }
+  try {
+    // Apps Script answers through a redirect to script.googleusercontent.com; fetch follows it.
+    const r = await fetch(env.GCAL_HOOK, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ ...body, key: env.WORKER_KEY }), redirect: "follow" });
+    const text = await r.text();
+    let out;
+    try { out = JSON.parse(text); } catch { out = { error: "Apps Script answered with something that isn't JSON: " + text.slice(0, 200) }; }
+    return json(out, out.error ? 502 : 200, cors);
+  } catch (e) {
+    return json({ error: String(e.message || e) }, 502, cors);
+  }
 }
 
 function json(obj, status, headers) {
