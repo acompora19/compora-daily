@@ -44,6 +44,8 @@ const PEOPLE = {
   family: { name: "Family", color: "#2E6A5F", dark: "#72B5A7" },
   holiday:{ name: "Holidays", color: "#B0432B", dark: "#E3806A" },
   house:  { name: "House",  color: "#6B6256", dark: "#A8977A" },
+  town:   { name: "Town",   color: "#5B6B2F", dark: "#B5C46A" },
+  mail:   { name: "From email", color: "#7A5C2E", dark: "#D1A86A" },
   other:  { name: "Other",  color: "#555",    dark: "#bbb" },
 };
 function personFor(id) { return PEOPLE[id] || { ...PEOPLE.other, name: id.charAt(0).toUpperCase() + id.slice(1) }; }
@@ -104,9 +106,12 @@ function holidayEvents(fromDate, toDate) {
 }
 
 // ---------- trash day ----------
-// cfg: { day: 0-6 (pickup weekday), recycle: "same" | "even" | "odd" | "none", recycleAnchor: "YYYY-MM-DD", shift: true }
+// cfg: { day: 0-6 (pickup weekday), recycle: "same" | "even" | "odd" | "none", recycleAnchor: "YYYY-MM-DD", shift: true, moved: { "YYYY-MM-DD (week's Monday)": "YYYY-MM-DD" } }
 // "even"/"odd": recycling every other week; the anchor is a date recycling WAS picked up, so the app can count weeks from it.
-const TRASH_DEFAULT = { day: 1, recycle: "same", recycleAnchor: "2026-11-02", shift: true };
+// "moved": weeks where the city/hauler announced a different pickup date (filled in from the city's alerts by the skimmer).
+// Default is the City of Canal Winchester's contract: Rumpke, Thursdays, recycling every week, pickup slides a day when
+// a holiday falls earlier in the week (canalwinchesterohio.gov/477/Trash-and-Recycling-Service).
+const TRASH_DEFAULT = { day: 4, recycle: "same", recycleAnchor: "2026-11-05", shift: true, moved: {} };
 // Monday of the week a date is in.
 function weekStart(d) { d = startOfDay(d); return addDays(d, -((d.getDay() + 6) % 7)); }
 // The real pickup date for a given week: the scheduled weekday, pushed a day if a hauler holiday falls on a weekday
@@ -120,14 +125,17 @@ function pickupInWeek(weekMonday, cfg = TRASH_DEFAULT) {
       if (h && h.shift && addDays(weekMonday, i).getDay() >= 1 && addDays(weekMonday, i).getDay() <= 5) hol = h;
     }
   }
-  const date = hol ? addDays(sched, 1) : sched;
+  let date = hol ? addDays(sched, 1) : sched;
+  const movedTo = cfg.moved && cfg.moved[dayKey(weekMonday)];
+  const moved = !!movedTo && dayKey(date) !== movedTo;
+  if (movedTo) date = fromKey(movedTo);
   let recycling = cfg.recycle === "same";
   if (cfg.recycle === "even" || cfg.recycle === "odd") {
     const anchorWeek = weekStart(fromKey(cfg.recycleAnchor || "2026-11-02"));
     const weeks = Math.round((weekMonday - anchorWeek) / (7 * DAY));
     recycling = ((weeks % 2) + 2) % 2 === 0;   // every other week, counting from the anchor week
   }
-  return { date, recycling, shifted: !!hol, holiday: hol };
+  return { date, recycling, shifted: !!hol || moved, holiday: moved ? { name: "the city's notice", key: "notice" } : hol, moved };
 }
 // Pickups from a date onward (n of them).
 function pickups(from, n = 6, cfg = TRASH_DEFAULT) {
@@ -155,8 +163,41 @@ function trashNotice(now = new Date(), cfg = TRASH_DEFAULT) {
 function trashEvents(fromDate, toDate, cfg = TRASH_DEFAULT) {
   return pickups(fromDate, 20, cfg).filter(p => p.date < toDate).map(p => ({
     id: `trash-${dayKey(p.date)}`, cal: "house", title: p.recycling ? "🗑️ Trash & recycling" : "🗑️ Trash", start: p.date.getTime(), end: p.date.getTime() + DAY, allDay: true, trash: true,
-    note: p.shifted ? `A day late for ${p.holiday.name}` : "",
+    note: p.moved ? "Moved per a city notice" : p.shifted ? `A day late for ${p.holiday.name}` : "",
   }));
+}
+// Turn the skimmer's city notices into the "moved" map: notice says pickup is on date X → the week containing X uses X.
+function movedFromNotices(notices = []) {
+  const moved = {};
+  for (const n of notices) if (n && n.movedTo && /^\d{4}-\d{2}-\d{2}$/.test(n.movedTo)) moved[dayKey(weekStart(fromKey(n.movedTo)))] = n.movedTo;
+  return moved;
+}
+
+// ---------- events found in email (skimmer) and accepted onto the board ----------
+// Items carry date "YYYY-MM-DD" and time "HH:MM" | null in Columbus time; this turns one into a board event.
+function foundToEvent(it, cal = "mail") {
+  if (!it || !/^\d{4}-\d{2}-\d{2}$/.test(it.date || "")) return null;
+  const d = fromKey(it.date);
+  const hm = s => (typeof s === "string" && /^\d{1,2}:\d{2}$/.test(s)) ? s.split(":").map(Number) : null;
+  const t0 = hm(it.time), t1 = hm(it.end);
+  const start = t0 ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), t0[0], t0[1]).getTime() : d.getTime();
+  let end = t1 ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), t1[0], t1[1]).getTime() : (t0 ? start + HOUR : start + DAY);
+  if (end <= start) end = start + (t0 ? HOUR : DAY);
+  return { id: `found-${it.id}`, cal: it.who && PEOPLE[it.who] ? it.who : cal, title: it.title, start, end, allDay: !t0, location: it.location || "",
+    desc: [it.note, it.from ? `Found in email from ${it.from}` : "", it.subject ? `"${it.subject}"` : ""].filter(Boolean).join("\n"), found: true };
+}
+// Day Out's events.json → board events for our town (the "Town" calendar).
+function townEvents(dayOutEvents = [], town = "Canal Winchester", from, to) {
+  const out = [];
+  for (const e of dayOutEvents) {
+    const hay = `${e.town || ""} ${e.venue || ""} ${e.address || ""}`.toLowerCase();
+    if (!hay.includes(town.toLowerCase())) continue;
+    const start = new Date(e.start).getTime(), end = e.end ? new Date(e.end).getTime() : start + (e.allDay ? DAY : 2 * HOUR);
+    if (!(start > 0) || start >= to.getTime() || end <= from.getTime()) continue;
+    out.push({ id: `town-${e.id}`, cal: "town", title: e.title, start, end, allDay: !!e.allDay, location: (e.venue || e.address || "").trim(),
+      desc: [e.cost ? `Cost: ${e.cost}` : "", e.source ? `From ${e.source} (via Beavy's Day Out)` : ""].filter(Boolean).join("\n"), url: e.url, town: true });
+  }
+  return out;
 }
 
 // ---------- reading Google Calendar (iCal) with ical.js ----------
@@ -371,6 +412,6 @@ function sampleEvents(now = new Date()) {
 }
 
 export { HOUR, DAY, DN, DNL, MN, MNL, HOME, PEOPLE, personFor, dayKey, fromKey, startOfDay, addDays, daysBetween, fmtClock, fmtShortClock, fmtDay, fmtLongDay, fmtRelativeDay,
-  holidaysFor, holidayOn, holidayFor, holidayEvents, nthWeekday, TRASH_DEFAULT, weekStart, pickupInWeek, pickups, trashNotice, trashEvents,
+  holidaysFor, holidayOn, holidayFor, holidayEvents, nthWeekday, TRASH_DEFAULT, weekStart, pickupInWeek, pickups, trashNotice, trashEvents, movedFromNotices, foundToEvent, townEvents,
   icsToEvents, eventsOnDay, chipTime, timeRange, upNext, monthGrid,
   parseOpenMeteo, dayHours, dressTemp, GEAR_NAME, gearFor, WEAR, wearFor, daySummary, outlookLine, sampleEvents };

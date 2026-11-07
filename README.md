@@ -8,7 +8,9 @@ Live: https://acompora19.github.io/compora-daily/
 
 - **Google Calendar is where events live.** Tony, Mom, Mia and a shared "Family" calendar. Add things on your phone like you do now; the wall picks them up within five minutes.
 - **A tiny Cloudflare Worker** (`worker/worker.js`) holds the calendars' secret iCal links and hands the calendar text to the page. The links never go in this repo.
-- **Trash day and holidays are rules in code** (`daily-core.js`): pickup on Mondays, slides a day after a hauler holiday, recycling on a schedule you set in Setup.
+- **Trash day and holidays are rules in code** (`daily-core.js`): the city's Rumpke contract (Thursdays, recycling weekly, pickup slides a day when a holiday falls earlier in the week), adjustable in Setup. When the city posts a "Rumpke holiday schedule" alert, the skimmer reads it and the board follows.
+- **The skimmer** (`scripts/skim.mjs`, run by GitHub twice a day) reads both inboxes, asks the Worker's free AI for anything with a date, and puts finds in a "Found in email" tray on the board. You tap ✓ to put one on the calendar or ✕ to drop it. Nothing goes on by itself.
+- **Town events** come from Beavy's Day Out's `data/events.json` (it already pulls the City of Canal Winchester calendar), filtered to Canal Winchester, in their own "Town" color. Turn off in Setup.
 - **Lists live in Firestore** (the shared Firebase project), so the tablet and every phone see the same grocery list.
 - **Weather** comes from Open-Meteo with no key; Beavy's outfit rules are copied from Mia's Almanac.
 - **The other apps** open inside the Apps tab, so the tablet is one home screen for everything.
@@ -17,7 +19,8 @@ Live: https://acompora19.github.io/compora-daily/
 
 - `index.html` is the whole app. `daily-core.js` holds the date, trash, holiday, calendar and weather logic (tests in `test/`).
 - `vendor/ical.min.js` is [ical.js](https://github.com/kewisch/ical.js) (MPL-2.0), which reads Google's calendar format, repeats and all.
-- `worker/worker.js` is the Cloudflare Worker. Paste it into a new Worker; see below.
+- `worker/worker.js` is the Cloudflare Worker: `/events` proxies the calendars, `/extract` is the AI the skimmer calls. Paste it into a new Worker; see below.
+- `scripts/skim.mjs` + `scripts/skim-lib.mjs` are the email/town skimmer; `.github/workflows/skim.yml` runs it.
 - `firestore.rules` is the full rule set for the shared Firebase project with the `daily_board` collection added.
 - `sw.js` and `manifest.json` make it install to a home screen and keep working offline. Bump `VERSION` in `sw.js` on every release.
 - Beavy's pictures are copies from Mia's Almanac.
@@ -34,7 +37,9 @@ Repo → **Settings → Pages** → Source: "Deploy from a branch", Branch: `mai
 4. Worker → **Settings → Variables and Secrets** → **Add**, type **Secret**, one per calendar:
    - `CAL_TONY` = the secret link for Tony's calendar
    - `CAL_MOM`, `CAL_MIA`, `CAL_FAMILY` the same way
+   - `WORKER_KEY` = any long random string (a password only the skimmer knows; you'll paste the same thing into GitHub in step 6 below)
    The name after `CAL_` picks the color on the board (tony, mom, mia, family). Anything else shows in gray.
+   Then **Settings → Bindings → Add → Workers AI**, variable name `AI` → Deploy. That's what reads the emails.
 5. Copy the Worker's address (looks like `https://compora-daily.YOURNAME.workers.dev`).
 6. In the app, **Setup** (top right) → paste the address → Save. Or open `https://acompora19.github.io/compora-daily/?worker=PASTE-THE-ADDRESS` once on a device, which saves it.
 7. To skip step 6 on every device: put the address in `WORKER_URL` at the top of the `<script>` in `index.html`.
@@ -45,7 +50,19 @@ Firebase console → the `mangia-mangia` project → **Firestore Database → Ru
 ### 4. Trash day
 Setup → pick the pickup day and the recycling schedule. The default is Monday, recycling every week, pickup slides a day after a holiday. Each device keeps its own setting, so set it on the tablet.
 
-### 5. The tablet
+### 5. The email & town skimmer
+1. For each Gmail account: make sure 2-Step Verification is on, then go to https://myaccount.google.com/apppasswords → name it "Compora Daily" → Create → copy the 16-character password.
+2. GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**, one at a time:
+   - `GMAIL_1` = `you@gmail.com:abcd efgh ijkl mnop` (the address, a colon, the app password; spaces are fine)
+   - `GMAIL_2` = the same for the other inbox
+   - `WORKER_URL` = the Worker's address from step 2
+   - `WORKER_KEY` = the same random string you put on the Worker
+3. **Actions** tab → **Skim email & town** → **Run workflow**. The log says how many emails it looked at and what it found. After that it runs itself at 12:23 AM and 12:23 PM.
+4. Finds show up in the "Found in email" tray on the board within a minute (they come through Firestore, so step 3 above has to be done).
+
+What it looks at: mail from the last 3 days, minus Gmail's Promotions/Social/Forums tabs and a short list of robot senders, and only emails that mention a date at all. Each of those goes to the Worker's AI, which answers with the event or nothing. The email text itself is never stored; only the find (title, date, who it's from).
+
+### 6. The tablet
 Any Android tablet with a browser. Install **Fully Kiosk Browser**, set the Start URL to the site, turn on "keep screen on", "hide status bar" and "reload on screen on", and set "return to start URL after idle" to a few minutes so it comes back from the Apps tab on its own. The page reloads itself at 3:30 AM every day to pick up updates.
 
 ## Adding events
@@ -55,11 +72,12 @@ Any Android tablet with a browser. Install **Fully Kiosk Browser**, set the Star
 - Google's "Events from Gmail" setting (Calendar → Settings → Events from Gmail) drops flights, reservations and appointments in on its own.
 
 ## Next up (not built yet)
-- Email reader: a nightly GitHub Action that checks mail from the school, daycare, vet and such, asks the Worker's free AI for dates, and shows them in a "found in email" tray to accept or dismiss.
-- Adding events from the tablet itself (needs a Google sign-in on the Worker).
+- Adding events from the tablet itself (needs a Google sign-in on the Worker). For now, ✓ Add puts a find on the board, and on a phone the event's "+ Google Calendar" button opens it pre-filled.
+- Destination Canal Winchester's downtown calendar (business.canalwinchester.com) blocks robots; if it ever offers a feed, add it to Day Out's sources and it flows through.
 - Tap-to-talk: "Mia's dentist Thursday at 3".
 
 ## Running the tests
 ```
 TZ=America/New_York node test/core.test.mjs
+TZ=America/New_York node test/skim.test.mjs
 ```

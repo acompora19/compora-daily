@@ -15,7 +15,7 @@ eq([h26.find(h => h.key === "easter").m, h26.find(h => h.key === "easter").d], [
 eq(h26.find(h => h.key === "mothers").d, 10, "Mother's Day 2026 is May 10");
 
 // trash: Monday pickup, holiday slide
-const cfg = { ...C.TRASH_DEFAULT };
+const cfg = { ...C.TRASH_DEFAULT, day: 1, recycleAnchor: "2026-11-02" };   // the Monday route, for these checks
 const p = C.pickups(new Date(2026, 8, 1), 2, cfg);
 eq(C.dayKey(p[0].date), "2026-09-08", "first pickup after Sep 1 is Tue Sep 8 (Labor Day week)");
 const lab = C.pickupInWeek(new Date(2026, 8, 7), cfg);
@@ -31,6 +31,22 @@ eq(C.dayKey(C.pickupInWeek(new Date(2026, 11, 21), thuCfg).date), "2026-12-24", 
 // every-other-week recycling counted from the anchor week
 const alt = { ...cfg, recycle: "even", recycleAnchor: "2026-11-02" };
 eq(C.pickups(new Date(2026, 10, 2), 3, alt).map(x => x.recycling), [true, false, true], "every-other-week recycling from Nov 2");
+// city default: Thursday; Thanksgiving week slides to Friday; a city notice can move a week
+eq(C.dayKey(C.pickupInWeek(new Date(2026, 10, 23)).date), "2026-11-27", "default (Thursday) slides to Friday on Thanksgiving");
+const mv = { ...C.TRASH_DEFAULT, moved: C.movedFromNotices([{ movedTo: "2026-12-26" }]) };
+const xw = C.pickupInWeek(new Date(2026, 11, 21), mv);
+eq([C.dayKey(xw.date), xw.moved, xw.shifted], ["2026-12-26", true, true], "a city notice moves Christmas-week pickup to Saturday");
+eq(C.trashEvents(new Date(2026, 11, 21), new Date(2026, 11, 28), mv)[0].note, "Moved per a city notice", "moved pickup says why");
+// found-in-email items become board events in local time
+const fe = C.foundToEvent({ id: "x", title: "Mia's dentist", date: "2026-11-12", time: "15:00", end: null, who: "mia" });
+eq([C.dayKey(fe.start), new Date(fe.start).getHours(), (fe.end - fe.start) / C.HOUR, fe.cal, fe.allDay], ["2026-11-12", 15, 1, "mia", false], "timed find → 1-hour event on Mia's color");
+eq(C.foundToEvent({ id: "y", title: "Picture day", date: "2026-11-20", time: null, who: "nobody" }).cal, "mail", "unknown who → mail color");
+eq(C.foundToEvent({ id: "z", title: "bad", date: "soon" }), null, "bad date → null");
+// Day Out events for the town
+const tw = C.townEvents([{ id: "cw-1", title: "Kid Zone", start: "2026-11-04T09:00-05:00", end: "2026-11-04T11:00-05:00", town: "Canal Winchester", source: "City of Canal Winchester" },
+  { id: "dtc-1", title: "Gallery Hop", start: "2026-11-07T16:00-05:00", town: "Columbus" }], "Canal Winchester", new Date(2026, 10, 1), new Date(2026, 11, 1));
+eq(tw.map(e => e.title), ["Kid Zone"], "only Canal Winchester events come through");
+eq(tw[0].cal, "town", "town color");
 // notices
 const sunEve = new Date(2026, 10, 1, 18, 0);   // Sunday 6 PM
 eq(C.trashNotice(sunEve, cfg)?.line, "Trash & recycling out tonight", "Sunday evening says out tonight");

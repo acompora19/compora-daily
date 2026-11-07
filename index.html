@@ -217,6 +217,16 @@ dialog h2{font-size:22px;margin-bottom:6px}
 .pill{display:inline-block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:2px;color:#FFF8EC;background:var(--c)}
 .daylist{display:flex;flex-direction:column;gap:5px;max-height:60vh;overflow-y:auto}
 
+/* found in email */
+.tray{display:flex;flex-direction:column;gap:6px}
+.tray .th{display:flex;align-items:baseline;gap:8px}
+.tray .th h3{font-size:17px}
+.find{--c:var(--p-mail);display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;border:1px dashed var(--c);border-left:4px solid var(--c);border-radius:3px;padding:8px 10px;background:color-mix(in srgb,var(--c) 9%,var(--surface))}
+.find .ft{font-size:14.5px;font-weight:500;line-height:1.2;grid-column:1}
+.find .fm{font-size:12px;color:var(--muted);grid-column:1}
+.find .fa{display:flex;gap:5px;grid-row:1/3;grid-column:2;align-self:center}
+.find .fa button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:3px;padding:5px 8px;font-size:12.5px;font-weight:500;white-space:nowrap}
+.find .fa button.yes{border-color:var(--green);color:var(--green)}
 .status{font-size:12px;color:var(--muted);text-align:center;padding-top:6px}
 .status.bad{color:var(--red)}
 .foot{font-size:12px;color:var(--muted);text-align:center;border-top:3px double var(--line);padding-top:10px}
@@ -265,6 +275,7 @@ dialog h2{font-size:22px;margin-bottom:6px}
       <section class="card heads" aria-label="Heads up">
         <div class="card-h"><h2>Heads up</h2><span class="hint" id="headsHint"></span></div>
         <div class="notices" id="notices"></div>
+        <div class="tray" id="tray" hidden></div>
         <div class="upnext" id="upnext"></div>
         <div class="phone-only agenda" id="todayAgenda"></div>
       </section>
@@ -331,6 +342,8 @@ dialog h2{font-size:22px;margin-bottom:6px}
     <label>Trash pickup day<select id="setTrashDay"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></label>
     <label>Recycling<select id="setRecycle"><option value="same">Same day, every week</option><option value="even">Every other week (this week: yes)</option><option value="odd">Every other week (this week: no)</option><option value="none">No recycling</option></select></label>
     <label>Holiday rule<select id="setShift"><option value="1">Pickup slides a day after a holiday</option><option value="0">Holidays don't change pickup</option></select></label>
+    <div class="hint">Canal Winchester's city contract (Rumpke) is Thursdays, recycling every week, and pickup slides a day when a holiday falls earlier in the week. If the city posts a change, the board follows it.</div>
+    <label>Town events (from Beavy's Day Out)<select id="setTown"><option value="1">Show Canal Winchester events</option><option value="0">Hide them</option></select></label>
     <div class="hint">These settings live on this device only (each phone and the tablet keep their own).</div>
     <div class="acts"><button class="btn" type="submit" value="save">Save</button><button class="btn quiet" type="submit" value="cancel">Cancel</button><button class="btn quiet" type="button" id="reloadBtn">Reload app</button></div>
   </form>
@@ -369,7 +382,9 @@ const state = {
   view: isWall() ? "week" : "today", anchor: C.startOfDay(new Date()), monthAnchor: new Date(), todayKey: C.dayKey(new Date()), calEvents: [], hours: [],
   fetched: null, calError: "", list: "grocery", board: { grocery: [], todo: [], dinners: {} }, boardMode: "loading",
   trash: { ...C.TRASH_DEFAULT, ...store.get("trash", {}) },
+  inbox: store.get("inbox", { items: [], notices: [] }), town: store.get("town", { at: 0, events: [] }), showTown: store.get("showTown", true),
 };
+const DAYOUT_EVENTS = "https://acompora19.github.io/beavys-day-out/data/events.json", TOWN_EVERY = 6 * 3600000;
 const workerUrl = () => (store.get("worker", "") || WORKER_URL).replace(/\/+$/, "");
 
 // ---------- theme + people colors ----------
@@ -451,9 +466,21 @@ async function loadEvents() {
   }
   render();
 }
-// all events for a range: calendars + holidays + trash
+// all events for a range: calendars + holidays + trash + things accepted from email + town events
+function trashCfg() { return { ...state.trash, moved: C.movedFromNotices(state.inbox.notices || []) }; }
 function allEvents(from, to) {
-  return [...state.calEvents, ...C.holidayEvents(from, to), ...C.trashEvents(from, to, state.trash)].filter(e => e.start < to.getTime() && e.end > from.getTime());
+  const extras = (state.board.extras || []).map(it => C.foundToEvent(it)).filter(Boolean);
+  const town = state.showTown ? C.townEvents(state.town.events, "Canal Winchester", from, to) : [];
+  return [...state.calEvents, ...extras, ...town, ...C.holidayEvents(from, to), ...C.trashEvents(from, to, trashCfg())].filter(e => e.start < to.getTime() && e.end > from.getTime());
+}
+// Canal Winchester events, borrowed from Beavy's Day Out (its GitHub Action refreshes that file daily)
+async function loadTown() {
+  if (Date.now() - state.town.at < TOWN_EVERY) return;
+  try {
+    const d = await (await fetch(DAYOUT_EVENTS, { cache: "no-store" })).json();
+    const evs = (Array.isArray(d) ? d : d.events || []).filter(e => /canal winchester/i.test(`${e.town || ""} ${e.venue || ""} ${e.address || ""}`));
+    state.town = { at: Date.now(), events: evs }; store.set("town", state.town); render();
+  } catch {}
 }
 
 // ---------- rendering ----------
@@ -472,14 +499,18 @@ function render() {
 }
 function renderHeads(now) {
   const notes = [];
-  const tr = C.trashNotice(now, state.trash);
+  const cfg = trashCfg();
+  const tr = C.trashNotice(now, cfg);
   if (tr) notes.push({ cls: tr.level, ico: tr.recycling ? "♻️" : "🗑️", t: tr.line, s: tr.sub });
   const hol = C.holidayFor(now);
   if (hol) notes.push({ cls: hol.today ? "hot" : "note", ico: hol.emoji, t: hol.today ? `Happy ${hol.name}!` : `${hol.name} is ${hol.days === 1 ? "tomorrow" : `in ${hol.days} days`}`, s: "" });
   const dinner = state.board.dinners?.[C.dayKey(now)];
   if (dinner) notes.push({ cls: "note", ico: "🍽️", t: `Dinner: ${dinner}`, s: "" });
-  const next = C.pickups(now, 1, state.trash)[0];
-  if (!tr && next) notes.push({ cls: "note", ico: "🗑️", t: `Next trash: ${C.fmtRelativeDay(next.date, now)}`, s: next.recycling ? "Recycling too" : "" });
+  const next = C.pickups(now, 1, cfg)[0];
+  if (!tr && next) notes.push({ cls: "note", ico: "🗑️", t: `Next trash: ${C.fmtRelativeDay(next.date, now)}`, s: next.moved ? "Moved per a city notice" : next.recycling ? "Recycling too" : "" });
+  // city notices about trash (from the skimmer), for a week after they're posted
+  for (const n of (state.inbox.notices || []).filter(n => now.getTime() - (n.posted || 0) < 7 * C.DAY).slice(0, 2))
+    notes.push({ cls: n.movedTo ? "hot" : "note", ico: "🏛️", t: n.movedTo ? `City: trash pickup is ${C.fmtRelativeDay(C.fromKey(n.movedTo), now)}` : n.title, s: n.note || "" });
   $("notices").innerHTML = notes.map(n => `<div class="notice ${n.cls}"><span class="ico">${n.ico}</span><span class="t">${esc(n.t)}</span>${n.s ? `<span class="s">${esc(n.s)}</span>` : ""}</div>`).join("");
   // up next (wall): the next few things across everyone
   const up = C.upNext(allEvents(C.startOfDay(now), C.addDays(now, 8)), now, isWall() ? 7 : 0);
@@ -491,9 +522,34 @@ function renderHeads(now) {
   }
   $("upnext").innerHTML = html;
   $("headsHint").textContent = "";
+  renderTray(now);
+}
+// "Found in email": pending finds from the skimmer. Accept puts it on the board; Not an event drops it.
+function renderTray(now) {
+  const items = (state.inbox.items || []).filter(it => it.status !== "done" && it.date >= C.dayKey(now)).slice(0, 6);
+  $("tray").hidden = !items.length;
+  if (!items.length) return;
+  $("tray").innerHTML = `<div class="th"><h3>Found in email</h3><span class="hint">tap ✓ to put it on the board</span></div>` + items.map(it => {
+    const ev = C.foundToEvent(it);
+    const when = ev ? `${C.fmtDay(ev.start, now)}${ev.allDay ? "" : " · " + C.fmtClock(ev.start)}` : it.date;
+    return `<div class="find" style="--c:${colorVar(it.who && C.PEOPLE[it.who] ? it.who : "mail")}" data-find="${esc(it.id)}">
+      <div class="ft">${esc(it.title)}</div>
+      <div class="fm">${esc(when)}${it.location ? " · " + esc(it.location) : ""} · from ${esc(it.from || "email")}</div>
+      <div class="fa"><button class="yes" type="button" data-accept="${esc(it.id)}" aria-label="Accept">✓ Add</button><button type="button" data-dismiss="${esc(it.id)}" aria-label="Not an event">✕</button></div>
+    </div>`;
+  }).join("");
+}
+async function settleFind(id, accept) {
+  const it = (state.inbox.items || []).find(x => x.id === id); if (!it) return;
+  state.inbox = { ...state.inbox, items: state.inbox.items.filter(x => x.id !== id) }; store.set("inbox", state.inbox);
+  if (accept) await saveBoard({ extras: [...(state.board.extras || []).filter(x => x.id !== it.id), { ...it, status: "accepted", accepted: Date.now() }].slice(-200) });
+  else render();
+  if (F && inboxRef) { try { await F.updateDoc(inboxRef, { items: F.arrayRemove(it) }); } catch (e) { console.warn("inbox update", e); } }
 }
 function renderLegend() {
   const ids = ["tony", "mom", "mia", "family"];
+  if (state.showTown && state.town.events.length) ids.push("town");
+  if ((state.board.extras || []).some(x => !x.who || !C.PEOPLE[x.who])) ids.push("mail");
   $("legend").innerHTML = ids.map(id => `<span><i style="--c:${colorVar(id)}"></i>${esc(C.PEOPLE[id].name)}</span>`).join("");
 }
 function wxLine(d) {
@@ -581,6 +637,11 @@ matchMedia("(min-width:980px)").addEventListener("change", () => { if (isWall() 
 
 // ---------- event + day details ----------
 function findEvent(id) { return allEvents(C.addDays(new Date(), -60), C.addDays(new Date(), 130)).find(e => e.id === id); }
+function gcalEventLink(e) {
+  const f = t => new Date(t).toISOString().replace(/[-:]|\.\d{3}/g, "");
+  const dates = e.allDay ? `${C.dayKey(e.start).replace(/-/g, "")}/${C.dayKey(e.end).replace(/-/g, "")}` : `${f(e.start)}/${f(e.end)}`;
+  return `https://calendar.google.com/calendar/u/0/r/eventedit?text=${encodeURIComponent(e.title)}&dates=${dates}${e.location ? "&location=" + encodeURIComponent(e.location) : ""}`;
+}
 function gcalAddLink(d) {
   const k = C.dayKey(d).replace(/-/g, "");
   return `https://calendar.google.com/calendar/u/0/r/eventedit?dates=${k}T180000/${k}T190000`;
@@ -593,7 +654,10 @@ function showEvent(e) {
     ${e.note ? `<div class="meta">${esc(e.note)}</div>` : ""}
     ${e.desc ? `<p>${esc(e.desc)}</p>` : ""}
     ${e.sample ? `<div class="meta">This is a sample event. Connect the calendars in Setup to see the real ones.</div>` : ""}
-    <div class="acts">${e.location ? `<a class="btn quiet small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}">Directions</a>` : ""}<button class="btn small" type="button" onclick="this.closest('dialog').close()">Close</button></div>`;
+    <div class="acts">${e.location ? `<a class="btn quiet small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}">Directions</a>` : ""}
+    ${e.url && /^https?:/.test(e.url) ? `<a class="btn quiet small" target="_blank" rel="noopener" href="${esc(e.url)}">Details</a>` : ""}
+    ${e.found ? `<a class="btn quiet small phone-only" target="_blank" rel="noopener" href="${gcalEventLink(e)}">+ Google Calendar</a><button class="btn quiet small" type="button" data-unaccept="${esc(e.id.replace(/^found-/, ""))}">Remove</button>` : ""}
+    <button class="btn small" type="button" onclick="this.closest('dialog').close()">Close</button></div>`;
   $("evDialog").showModal();
 }
 function showDay(dk) {
@@ -605,6 +669,9 @@ function showDay(dk) {
   $("dayDialog").showModal();
 }
 document.addEventListener("click", e => {
+  const acc = e.target.closest("[data-accept]"); if (acc) { settleFind(acc.dataset.accept, true); return; }
+  const dis = e.target.closest("[data-dismiss]"); if (dis) { settleFind(dis.dataset.dismiss, false); return; }
+  const un = e.target.closest("[data-unaccept]"); if (un) { saveBoard({ extras: (state.board.extras || []).filter(x => x.id !== un.dataset.unaccept) }); un.closest("dialog").close(); return; }
   const ev = e.target.closest("[data-ev]"); if (ev) { const x = findEvent(ev.dataset.ev); if (x) showEvent(x); return; }
   const dn = e.target.closest("[data-dinner]"); if (dn) { askDinner(dn.dataset.dinner); return; }
   const cell = e.target.closest(".cell[data-day]"); if (cell) { showDay(cell.dataset.day); return; }
@@ -613,7 +680,7 @@ document.addEventListener("click", e => {
 for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", e => { if (e.target === d) d.close(); });
 
 // ---------- lists (Firestore, shared with everyone's phone; falls back to this device if Firestore can't be reached) ----------
-let db = null, F = null, boardRef = null;
+let db = null, F = null, boardRef = null, inboxRef = null;
 async function loadFirebase() {
   try {
     const [appMod, fsMod] = await Promise.all([
@@ -621,7 +688,8 @@ async function loadFirebase() {
       import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"),
     ]);
     F = fsMod; db = F.getFirestore(appMod.initializeApp(FIREBASE));
-    boardRef = F.doc(db, "daily_board", "main");
+    boardRef = F.doc(db, "daily_board", "main"); inboxRef = F.doc(db, "daily_inbox", "main");
+    F.onSnapshot(inboxRef, snap => { if (snap.exists()) { const d = snap.data(); state.inbox = { items: d.items || [], notices: d.notices || [], ran: d.ran || 0 }; store.set("inbox", state.inbox); render(); } }, () => {});
     F.onSnapshot(boardRef, snap => {
       state.board = { grocery: [], todo: [], dinners: {}, ...(snap.exists() ? snap.data() : {}) };
       state.boardMode = "shared"; store.set("board", state.board); render();
@@ -685,7 +753,7 @@ function askDinner(dk) {
 // ---------- setup ----------
 $("setBtn").onclick = () => {
   $("setWorker").value = store.get("worker", "") || WORKER_URL;
-  $("setTrashDay").value = String(state.trash.day); $("setRecycle").value = state.trash.recycle; $("setShift").value = state.trash.shift ? "1" : "0";
+  $("setTrashDay").value = String(state.trash.day); $("setRecycle").value = state.trash.recycle; $("setShift").value = state.trash.shift ? "1" : "0"; $("setTown").value = state.showTown ? "1" : "0";
   $("setDialog").showModal();
 };
 $("setForm").onsubmit = e => {
@@ -694,14 +762,15 @@ $("setForm").onsubmit = e => {
   const rec = $("setRecycle").value;
   state.trash = { ...state.trash, day: +$("setTrashDay").value, recycle: rec, shift: $("setShift").value === "1", recycleAnchor: rec === "odd" ? C.dayKey(C.addDays(new Date(), 7)) : C.dayKey(new Date()) };
   store.set("trash", state.trash);
+  state.showTown = $("setTown").value === "1"; store.set("showTown", state.showTown);
   loadEvents();
 };
 $("reloadBtn").onclick = () => location.reload();
 
 // ---------- go ----------
 setView(state.view);
-loadWeather(); loadEvents(); loadFirebase();
-setInterval(loadEvents, EVENTS_EVERY); setInterval(loadWeather, WEATHER_EVERY);
+loadWeather(); loadEvents(); loadFirebase(); loadTown();
+setInterval(loadEvents, EVENTS_EVERY); setInterval(loadWeather, WEATHER_EVERY); setInterval(loadTown, 3600000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { loadEvents(); tick(); } });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
