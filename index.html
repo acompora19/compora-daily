@@ -339,10 +339,12 @@ dialog h2{font-size:22px;margin-bottom:6px}
     <h2>Setup</h2>
     <label>Calendar Worker address (from Cloudflare)<input id="setWorker" type="url" placeholder="https://compora-daily.YOURNAME.workers.dev" inputmode="url"></label>
     <div class="hint" id="setWorkerHint">Leave blank to see sample events. The README in the repo walks through making the Worker.</div>
-    <label>Trash pickup day<select id="setTrashDay"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></label>
+    <label>Columbus trash schedule (ReCollect place ID for this address)<input id="setPlace" type="text" placeholder="paste the ID from the setup link" spellcheck="false"></label>
+    <div class="hint">With this filled in, the board reads the City of Columbus schedule for the house (the Gold zone's rotating day, recycling, yard waste) and the settings below only matter as a backup.</div>
+    <label>Backup trash pickup day<select id="setTrashDay"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></label>
     <label>Recycling<select id="setRecycle"><option value="same">Same day, every week</option><option value="even">Every other week (this week: yes)</option><option value="odd">Every other week (this week: no)</option><option value="none">No recycling</option></select></label>
     <label>Holiday rule<select id="setShift"><option value="1">Pickup slides a day after a holiday</option><option value="0">Holidays don't change pickup</option></select></label>
-    <div class="hint">Canal Winchester's city contract (Rumpke) is Thursdays, recycling every week, and pickup slides a day when a holiday falls earlier in the week. If the city posts a change, the board follows it.</div>
+    <div class="hint">Only used when the Columbus schedule above is blank or runs out.</div>
     <label>Town events (from Beavy's Day Out)<select id="setTown"><option value="1">Show Canal Winchester events</option><option value="0">Hide them</option></select></label>
     <div class="hint">These settings live on this device only (each phone and the tablet keep their own).</div>
     <div class="acts"><button class="btn" type="submit" value="save">Save</button><button class="btn quiet" type="submit" value="cancel">Cancel</button><button class="btn quiet" type="button" id="reloadBtn">Reload app</button></div>
@@ -376,14 +378,19 @@ const store = { get(k, d) { try { const v = JSON.parse(localStorage.getItem("cd.
 const isWall = () => matchMedia("(min-width:980px)").matches;
 
 // a setup link like ?worker=https://... saves the address and cleans the URL, so the tablet can be set up with one tap
-{ const q = new URLSearchParams(location.search); if (q.get("worker")) { store.set("worker", q.get("worker").trim()); history.replaceState(null, "", location.pathname); } }
+{ const q = new URLSearchParams(location.search); let clean = false;
+  if (q.get("worker")) { store.set("worker", q.get("worker").trim()); clean = true; }
+  if (q.get("place")) { store.set("place", q.get("place").trim()); clean = true; }
+  if (clean) history.replaceState(null, "", location.pathname); }
 
 const state = {
   view: isWall() ? "week" : "today", anchor: C.startOfDay(new Date()), monthAnchor: new Date(), todayKey: C.dayKey(new Date()), calEvents: [], hours: [],
   fetched: null, calError: "", list: "grocery", board: { grocery: [], todo: [], dinners: {} }, boardMode: "loading",
   trash: { ...C.TRASH_DEFAULT, ...store.get("trash", {}) },
   inbox: store.get("inbox", { items: [], notices: [] }), town: store.get("town", { at: 0, events: [] }), showTown: store.get("showTown", true),
+  feed: store.get("feed", { at: 0, pickups: [], holidays: [] }),
 };
+const RECOLLECT = { area: "Columbus", service: 237 }, FEED_EVERY = 12 * 3600000;
 const DAYOUT_EVENTS = "https://acompora19.github.io/beavys-day-out/data/events.json", TOWN_EVERY = 6 * 3600000;
 const workerUrl = () => (store.get("worker", "") || WORKER_URL).replace(/\/+$/, "");
 
@@ -467,7 +474,22 @@ async function loadEvents() {
   render();
 }
 // all events for a range: calendars + holidays + trash + things accepted from email + town events
-function trashCfg() { return { ...state.trash, moved: C.movedFromNotices(state.inbox.notices || []) }; }
+function trashCfg() { return { ...state.trash, moved: C.movedFromNotices(state.inbox.notices || []), feed: state.feed.pickups || [] }; }
+// The City of Columbus's schedule for this address, from its ReCollect service (the same thing the PickUp CBUS app shows).
+// It answers JSONP only, so this adds a <script> tag rather than using fetch.
+function loadFeed(force = false) {
+  const place = store.get("place", ""); if (!place) return;
+  if (!force && Date.now() - state.feed.at < FEED_EVERY && state.feed.place === place) return;
+  const now = new Date(), after = C.dayKey(C.addDays(now, -7)), before = C.dayKey(C.addDays(now, 150));
+  const cb = "__rc" + Date.now();
+  window[cb] = data => {
+    try { const r = C.recollectPickups(data); if (r.pickups.length) { state.feed = { at: Date.now(), place, ...r }; store.set("feed", state.feed); render(); } } finally { delete window[cb]; s.remove(); }
+  };
+  const s = document.createElement("script");
+  s.src = `https://api.recollect.net/api/places/${encodeURIComponent(place)}/services/${RECOLLECT.service}/events?nomerge=1&hide=reminder_only&after=${after}&before=${before}&locale=en-US&callback=${cb}`;
+  s.onerror = () => { delete window[cb]; s.remove(); };
+  document.head.appendChild(s);
+}
 function allEvents(from, to) {
   const extras = (state.board.extras || []).map(it => C.foundToEvent(it)).filter(Boolean);
   const town = state.showTown ? C.townEvents(state.town.events, "Canal Winchester", from, to) : [];
@@ -493,9 +515,10 @@ function render() {
   if (state.view === "today") renderAgenda(now, true);
   renderLists();
   const st = $("calStatus");
-  if (state.sample) { st.textContent = "Sample events. Open Setup (top right) to connect the family calendars."; st.className = "status"; }
+  const feedNote = state.feed.pickups?.length ? " · Trash days from the City of Columbus." : "";
+  if (state.sample) { st.textContent = "Sample events. Open Setup (top right) to connect the family calendars." + feedNote; st.className = "status"; }
   else if (state.calError) { st.textContent = state.calError; st.className = "status bad"; }
-  else { st.textContent = state.fetched ? `Calendars updated ${C.fmtClock(state.fetched)}` : "Loading calendars…"; st.className = "status"; }
+  else { st.textContent = (state.fetched ? `Calendars updated ${C.fmtClock(state.fetched)}` : "Loading calendars…") + feedNote; st.className = "status"; }
 }
 function renderHeads(now) {
   const notes = [];
@@ -752,25 +775,27 @@ function askDinner(dk) {
 
 // ---------- setup ----------
 $("setBtn").onclick = () => {
-  $("setWorker").value = store.get("worker", "") || WORKER_URL;
+  $("setWorker").value = store.get("worker", "") || WORKER_URL; $("setPlace").value = store.get("place", "");
   $("setTrashDay").value = String(state.trash.day); $("setRecycle").value = state.trash.recycle; $("setShift").value = state.trash.shift ? "1" : "0"; $("setTown").value = state.showTown ? "1" : "0";
   $("setDialog").showModal();
 };
 $("setForm").onsubmit = e => {
   if (e.submitter?.value !== "save") return;
   store.set("worker", $("setWorker").value.trim());
+  const placeBefore = store.get("place", ""); store.set("place", $("setPlace").value.trim());
+  if (!$("setPlace").value.trim()) { state.feed = { at: 0, pickups: [], holidays: [] }; store.set("feed", state.feed); }
   const rec = $("setRecycle").value;
   state.trash = { ...state.trash, day: +$("setTrashDay").value, recycle: rec, shift: $("setShift").value === "1", recycleAnchor: rec === "odd" ? C.dayKey(C.addDays(new Date(), 7)) : C.dayKey(new Date()) };
   store.set("trash", state.trash);
   state.showTown = $("setTown").value === "1"; store.set("showTown", state.showTown);
-  loadEvents();
+  loadEvents(); loadFeed(placeBefore !== store.get("place", ""));
 };
 $("reloadBtn").onclick = () => location.reload();
 
 // ---------- go ----------
 setView(state.view);
-loadWeather(); loadEvents(); loadFirebase(); loadTown();
-setInterval(loadEvents, EVENTS_EVERY); setInterval(loadWeather, WEATHER_EVERY); setInterval(loadTown, 3600000);
+loadWeather(); loadEvents(); loadFirebase(); loadTown(); loadFeed();
+setInterval(loadEvents, EVENTS_EVERY); setInterval(loadWeather, WEATHER_EVERY); setInterval(loadTown, 3600000); setInterval(loadFeed, 3600000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { loadEvents(); tick(); } });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>

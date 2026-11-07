@@ -109,10 +109,35 @@ function holidayEvents(fromDate, toDate) {
 // cfg: { day: 0-6 (pickup weekday), recycle: "same" | "even" | "odd" | "none", recycleAnchor: "YYYY-MM-DD", shift: true, moved: { "YYYY-MM-DD (week's Monday)": "YYYY-MM-DD" } }
 // "even"/"odd": recycling every other week; the anchor is a date recycling WAS picked up, so the app can count weeks from it.
 // "moved": weeks where the city/hauler announced a different pickup date (filled in from the city's alerts by the skimmer).
-// Default: Thursdays, recycling every week, pickup slides a day when a holiday falls on or before pickup day that week.
-// That's both the City of Canal Winchester's Rumpke contract (canalwinchesterohio.gov/477/Trash-and-Recycling-Service)
-// and Madison Township's Local Waste Services contract (localwasteservices.com/service-guidelines/madison-township).
-const TRASH_DEFAULT = { day: 4, recycle: "same", recycleAnchor: "2026-11-05", shift: true, moved: {} };
+// "feed": the real schedule for this address from Columbus's ReCollect service (see recollectPickups). When it's there
+// it wins over the rules above, because Columbus's "color" zones rotate a weekday later after every city holiday.
+// Default when there's no feed yet: Monday (where the Gold zone sat in Nov 2026), recycling Tuesdays, holiday slide on.
+const TRASH_DEFAULT = { day: 1, recycle: "same", recycleAnchor: "2026-11-02", shift: true, moved: {}, feed: [] };
+// A pickup: { date, kinds: ["trash" | "recycling" | "yard"], shifted, holiday, moved, source: "rule" | "feed" }
+const KIND_LABEL = { trash: "Trash", recycling: "recycling", yard: "yard waste" };
+function kindsLabel(kinds) {
+  const k = [...kinds]; if (!k.length) return "Pickup";
+  const words = k.map((x, i) => i === 0 ? KIND_LABEL[x].charAt(0).toUpperCase() + KIND_LABEL[x].slice(1) : KIND_LABEL[x]);
+  return words.length === 1 ? words[0] : words.length === 2 ? `${words[0]} & ${words[1]}` : `${words.slice(0, -1).join(", ")} & ${words.at(-1)}`;
+}
+// Columbus ReCollect events JSON → [{ date: "YYYY-MM-DD", kinds }] plus the holidays it lists.
+// (api.recollect.net/api/places/<place>/services/237/events?nomerge=1&hide=reminder_only&after=…&before=…&locale=en-US)
+function recollectPickups(data) {
+  const byDay = new Map(), holidays = [];
+  for (const e of data?.events || []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.day || "")) continue;
+    if (e.type === "holiday" || e.is_holiday) { holidays.push({ date: e.day, title: String(e.title || "Holiday") }); continue; }
+    for (const f of e.flags || []) {
+      const n = `${f.name || ""} ${f.subject || ""} ${f.event_type || ""}`.toLowerCase();
+      const kind = /recycl/.test(n) ? "recycling" : /yard|trimm/.test(n) ? "yard" : /trash|garbage|refuse/.test(n) ? "trash" : null;
+      if (!kind) continue;
+      if (!byDay.has(e.day)) byDay.set(e.day, new Set());
+      byDay.get(e.day).add(kind);
+    }
+  }
+  const order = ["trash", "recycling", "yard"];
+  return { pickups: [...byDay].sort(([a], [b]) => a < b ? -1 : 1).map(([date, k]) => ({ date, kinds: order.filter(x => k.has(x)) })), holidays };
+}
 // Monday of the week a date is in.
 function weekStart(d) { d = startOfDay(d); return addDays(d, -((d.getDay() + 6) % 7)); }
 // The real pickup date for a given week: the scheduled weekday, pushed a day if a hauler holiday falls on a weekday
@@ -136,35 +161,47 @@ function pickupInWeek(weekMonday, cfg = TRASH_DEFAULT) {
     const weeks = Math.round((weekMonday - anchorWeek) / (7 * DAY));
     recycling = ((weeks % 2) + 2) % 2 === 0;   // every other week, counting from the anchor week
   }
-  return { date, recycling, shifted: !!hol || moved, holiday: moved ? { name: "the city's notice", key: "notice" } : hol, moved };
+  return { date, recycling, kinds: recycling ? ["trash", "recycling"] : ["trash"], shifted: !!hol || moved, holiday: moved ? { name: "the city's notice", key: "notice" } : hol, moved, source: "rule" };
 }
-// Pickups from a date onward (n of them).
+// Pickups from a date onward (n of them): from the city's feed when we have it for that stretch, else from the rules.
 function pickups(from, n = 6, cfg = TRASH_DEFAULT) {
+  const start = startOfDay(from);
+  const feed = (cfg.feed || []).filter(p => p && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && fromKey(p.date) >= start && (p.kinds || []).length);
+  if (feed.length) {
+    const out = feed.slice(0, n).map(p => ({ date: fromKey(p.date), kinds: [...p.kinds], recycling: p.kinds.includes("recycling"), shifted: false, holiday: null, moved: false, source: "feed" }));
+    // when the feed runs out (it only goes a few months ahead), carry on with the rules after its last date
+    if (out.length >= n) return out;
+    const last = out.at(-1).date;
+    return out.concat(pickups(addDays(last, 1), n - out.length, { ...cfg, feed: [] }));
+  }
   const out = []; let wk = weekStart(from);
-  while (out.length < n) { const p = pickupInWeek(wk, cfg); if (p.date >= startOfDay(from)) out.push(p); wk = addDays(wk, 7); }
+  while (out.length < n) { const p = pickupInWeek(wk, cfg); if (p.date >= start) out.push(p); wk = addDays(wk, 7); }
   return out;
 }
 // What to say on the board right now about trash. Returns null when there's nothing worth saying.
 //   The evening before (from 4 PM): "Trash out tonight" (the headline of the day).
 //   The morning of (until noon): "Trash day" (in case it's not at the curb yet).
 function trashNotice(now = new Date(), cfg = TRASH_DEFAULT) {
-  const next = pickups(now, 2, cfg)[0];
-  const diff = daysBetween(now, next.date), hr = now.getHours();
-  const what = next.recycling ? "Trash & recycling" : "Trash";
+  const hr = now.getHours();
+  let [next, after] = pickups(now, 2, cfg);
+  if (daysBetween(now, next.date) === 0 && hr >= 12 && after) next = after;   // today's is done; look at the next one
+  const diff = daysBetween(now, next.date);
+  const what = kindsLabel(next.kinds);
   if (diff === 1 && hr >= 16) return { level: "hot", line: `${what} out tonight`, sub: next.shifted ? `A day late this week for ${next.holiday.name}` : "", ...next };
   if (diff === 0 && hr < 12) return { level: "hot", line: `${what} day`, sub: next.shifted ? `Pushed to ${DNL[next.date.getDay()]} for ${next.holiday.name}` : "Is it at the curb?", ...next };
   if (diff === 0) return null;
   if (diff === 1) return { level: "soon", line: `${what} goes out tonight`, sub: next.shifted ? `A day late this week for ${next.holiday.name}` : "", ...next };
   // the usual trash night, but the holiday pushed pickup: say so before someone drags the cans out
   if (next.shifted && diff === 2 && hr >= 16) return { level: "hot", line: "No trash tonight", sub: `Pickup is ${DNL[next.date.getDay()]} this week for ${next.holiday.name}`, ...next };
+  if (next.source === "feed" && diff >= 2 && diff <= 6 && next.kinds.includes("trash") && next.date.getDay() !== (cfg.day ?? -1)) return { level: "note", line: `${what} is ${DNL[next.date.getDay()]} this week`, sub: "Per the city's schedule", ...next };
   if (next.shifted && diff <= 6) return { level: "note", line: `${what} is ${DNL[next.date.getDay()]} this week`, sub: `Pushed a day for ${next.holiday.name}`, ...next };
   return null;
 }
 // Trash pickups as all-day events for the calendar grid.
 function trashEvents(fromDate, toDate, cfg = TRASH_DEFAULT) {
   return pickups(fromDate, 20, cfg).filter(p => p.date < toDate).map(p => ({
-    id: `trash-${dayKey(p.date)}`, cal: "house", title: p.recycling ? "🗑️ Trash & recycling" : "🗑️ Trash", start: p.date.getTime(), end: p.date.getTime() + DAY, allDay: true, trash: true,
-    note: p.moved ? "Moved per a city notice" : p.shifted ? `A day late for ${p.holiday.name}` : "",
+    id: `trash-${dayKey(p.date)}`, cal: "house", title: `${p.kinds.includes("trash") ? "🗑️" : p.kinds.includes("recycling") ? "♻️" : "🍂"} ${kindsLabel(p.kinds)}`, start: p.date.getTime(), end: p.date.getTime() + DAY, allDay: true, trash: true,
+    note: p.source === "feed" ? "From the City of Columbus schedule for this address" : p.moved ? "Moved per a city notice" : p.shifted ? `A day late for ${p.holiday.name}` : "",
   }));
 }
 // Turn the skimmer's city notices into the "moved" map: notice says pickup is on date X → the week containing X uses X.
@@ -413,6 +450,6 @@ function sampleEvents(now = new Date()) {
 }
 
 export { HOUR, DAY, DN, DNL, MN, MNL, HOME, PEOPLE, personFor, dayKey, fromKey, startOfDay, addDays, daysBetween, fmtClock, fmtShortClock, fmtDay, fmtLongDay, fmtRelativeDay,
-  holidaysFor, holidayOn, holidayFor, holidayEvents, nthWeekday, TRASH_DEFAULT, weekStart, pickupInWeek, pickups, trashNotice, trashEvents, movedFromNotices, foundToEvent, townEvents,
+  holidaysFor, holidayOn, holidayFor, holidayEvents, nthWeekday, TRASH_DEFAULT, kindsLabel, recollectPickups, weekStart, pickupInWeek, pickups, trashNotice, trashEvents, movedFromNotices, foundToEvent, townEvents,
   icsToEvents, eventsOnDay, chipTime, timeRange, upNext, monthGrid,
   parseOpenMeteo, dayHours, dressTemp, GEAR_NAME, gearFor, WEAR, wearFor, daySummary, outlookLine, sampleEvents };

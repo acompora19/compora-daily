@@ -1,6 +1,6 @@
-# Skims the family inboxes and the city's trash notices twice a day. See scripts/skim.mjs for what it does
+# Skims the family inboxes twice a day. See scripts/skim.mjs for what it does
 # and which secrets it needs. Run it by hand from the Actions tab → "Skim email & town" → Run workflow.
-name: Skim email & town
+name: Skim email
 on:
   schedule:
     - cron: "23 5 * * *"    # 12:23 AM Eastern (1:23 AM in summer)

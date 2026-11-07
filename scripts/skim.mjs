@@ -3,8 +3,7 @@
 //  1. Reads recent mail in each Gmail inbox (IMAP, app password), skips the obvious junk, and asks the Worker's AI
 //     whether each remaining email holds a dated family event. Finds go to Firestore `daily_inbox/main` as PENDING
 //     items; the board shows them in a "Found in email" tray to accept or dismiss. Nothing goes on the calendar by itself.
-//  2. Reads the City of Canal Winchester's alert and news feeds for trash/Rumpke notices; if one says pickup moved,
-//     the board gets a notice and that week's trash day follows it.
+//  (Trash days don't come from here: the board reads the City of Columbus's own schedule for the address directly.)
 //
 // Secrets it needs (repo → Settings → Secrets and variables → Actions):
 //   GMAIL_1 = "you@gmail.com:abcd efgh ijkl mnop"   (address, colon, the 16-character App Password)
@@ -17,7 +16,7 @@
 
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import { localDate, mailId, htmlToText, tidyBody, looksDated, skipSender, isTrashNotice, parseRss, toFs, fromFs, mergeInbox } from "./skim-lib.mjs";
+import { localDate, mailId, htmlToText, tidyBody, looksDated, skipSender, toFs, fromFs, mergeInbox } from "./skim-lib.mjs";
 
 const PROJECT = process.env.FIREBASE_PROJECT || "mangia-mangia-29ece";
 const KEY = process.env.FIREBASE_KEY || "AIzaSyDaBcD1gNsi56k4_w2NV8eWevv5EltjwOk";
@@ -25,10 +24,6 @@ const WORKER = (process.env.WORKER_URL || "").replace(/\/+$/, "");
 const WKEY = process.env.WORKER_KEY || "";
 const DAYS = Number(process.env.SKIM_DAYS || 3);        // how far back to look each run (seen-list stops repeats)
 const MAX_PER_BOX = Number(process.env.SKIM_MAX || 40); // newest N per inbox per run
-const TOWN_FEEDS = [
-  "https://www.canalwinchesterohio.gov/RSSFeed.aspx?ModID=63&CID=All-alertcenter.xml",
-  "https://www.canalwinchesterohio.gov/RSSFeed.aspx?ModID=1&CID=All-newsflash.xml",
-];
 const today = localDate();
 const log = (...a) => console.log(...a);
 
@@ -93,25 +88,6 @@ async function skimInbox(label, user, pass) {
   return out;
 }
 
-// ---------- 2. town notices ----------
-async function skimTown() {
-  const notices = [];
-  for (const feed of TOWN_FEEDS) {
-    let xml;
-    try { const r = await fetch(feed, { headers: { "User-Agent": "compora-daily/1.0" } }); if (!r.ok) throw new Error(`HTTP ${r.status}`); xml = await r.text(); }
-    catch (e) { log(`   ! ${feed}: ${e.message}`); continue; }
-    for (const it of parseRss(xml)) {
-      const age = (Date.now() - new Date(it.date).getTime()) / 86400000;
-      if (!(age <= 14) || !isTrashNotice(it.title + " " + it.desc)) continue;
-      const n = { id: "n-" + (it.link.match(/AID=([\w-]+)/)?.[1] || it.title).replace(/[^\w-]+/g, "_").slice(0, 60), title: it.title, link: it.link, posted: new Date(it.date).getTime() || Date.now(), movedTo: null, note: "" };
-      try { const res = await ask("alert", { text: `${it.title}\n${it.desc}` }); n.movedTo = res.trash?.moved_to || null; n.note = res.trash?.note || ""; }
-      catch (e) { log(`   ! alert AI: ${e.message}`); }
-      notices.push(n);
-    }
-  }
-  return notices;
-}
-
 // ---------- go ----------
 const boxes = ["GMAIL_1", "GMAIL_2", "GMAIL_3"].map(k => process.env[k]).filter(Boolean).map((s, i) => {
   const [user, ...rest] = s.split(":"); return { label: user.trim(), user: user.trim(), pass: rest.join(":").replace(/\s+/g, "") };
@@ -125,10 +101,8 @@ for (const b of boxes) {
     found.push(...r.items); seen.push(...r.seen);
   } catch (e) { log(`   ! ${b.label}: ${e.message}`); }
 }
-const notices = await skimTown();
-log(`   town: ${notices.length} trash notice(s)${notices.map(n => ` · "${n.title}"${n.movedTo ? ` → pickup ${n.movedTo}` : ""}`).join("")}`);
 
 const doc = await readDoc("daily_inbox", "main");
 const merged = mergeInbox(doc, found, seen);
-await patchDoc("daily_inbox", "main", { items: merged.items, seen: merged.seen, notices, ran: Date.now(), today });
-log(`   saved: ${merged.added} new pending item(s), ${merged.items.length} in the tray, ${notices.length} notice(s)`);
+await patchDoc("daily_inbox", "main", { items: merged.items, seen: merged.seen, ran: Date.now(), today });
+log(`   saved: ${merged.added} new pending item(s), ${merged.items.length} in the tray`);

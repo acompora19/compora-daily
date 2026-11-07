@@ -31,8 +31,28 @@ eq(C.dayKey(C.pickupInWeek(new Date(2026, 11, 21), thuCfg).date), "2026-12-24", 
 // every-other-week recycling counted from the anchor week
 const alt = { ...cfg, recycle: "even", recycleAnchor: "2026-11-02" };
 eq(C.pickups(new Date(2026, 10, 2), 3, alt).map(x => x.recycling), [true, false, true], "every-other-week recycling from Nov 2");
-// city default: Thursday; Thanksgiving week slides to Friday; a city notice can move a week
-eq(C.dayKey(C.pickupInWeek(new Date(2026, 10, 23)).date), "2026-11-27", "default (Thursday) slides to Friday on Thanksgiving");
+// default (Monday) is unaffected by Thanksgiving; a city notice can move a week
+eq(C.dayKey(C.pickupInWeek(new Date(2026, 10, 23)).date), "2026-11-23", "default (Monday) is not moved by Thanksgiving");
+// the Columbus ReCollect feed (Gold zone, Nov 2026) wins over the rules
+const rc = C.recollectPickups({ events: [
+  { day: "2026-11-09", flags: [{ name: "trash_gold", subject: "Trash Gold" }] },
+  { day: "2026-11-10", flags: [{ name: "recycling", subject: "Recycling" }, { name: "yardtrimmings", subject: "Yard Waste" }] },
+  { day: "2026-11-11", type: "holiday", is_holiday: true, title: "Holiday: Veterans Day", flags: [] },
+  { day: "2026-11-17", flags: [{ name: "trash_gold" }, { name: "recycling" }] },
+  { day: "2026-11-24", flags: [{ name: "trash_gold" }, { name: "recycling" }] },
+  { day: "2026-12-02", flags: [{ name: "trash_gold" }] },
+] });
+eq(rc.pickups.map(p => `${p.date}:${p.kinds.join("+")}`), ["2026-11-09:trash", "2026-11-10:recycling+yard", "2026-11-17:trash+recycling", "2026-11-24:trash+recycling", "2026-12-02:trash"], "feed parsed by day and kind");
+eq(rc.holidays.map(h => h.date), ["2026-11-11"], "feed holidays kept");
+const fcfg = { ...C.TRASH_DEFAULT, feed: rc.pickups };
+eq(C.pickups(new Date(2026, 10, 7), 3, fcfg).map(p => C.dayKey(p.date)), ["2026-11-09", "2026-11-10", "2026-11-17"], "feed pickups in order");
+eq(C.pickups(new Date(2026, 10, 7), 3, fcfg)[0].source, "feed", "marked as from the feed");
+eq(C.trashNotice(new Date(2026, 10, 8, 18), fcfg)?.line, "Trash out tonight", "Sunday evening before a Monday trash day");
+eq(C.trashNotice(new Date(2026, 10, 9, 18), fcfg)?.line, "Recycling & yard waste out tonight", "Monday evening: recycling and yard waste go out");
+eq(C.trashNotice(new Date(2026, 10, 15, 18), fcfg)?.line, "Trash & recycling is Tuesday this week", "after Veterans Day the board says trash moved to Tuesday");
+eq(C.trashNotice(new Date(2026, 10, 16, 18), fcfg)?.line, "Trash & recycling out tonight", "Monday evening that week says out tonight");
+eq(C.pickups(new Date(2026, 11, 3), 2, fcfg).map(p => C.dayKey(p.date)), ["2026-12-07", "2026-12-14"], "past the feed it falls back to the rules");
+eq(C.trashEvents(new Date(2026, 10, 9), new Date(2026, 10, 11), fcfg).map(e => e.title), ["🗑️ Trash", "♻️ Recycling & yard waste"], "feed events get the right titles");
 const mv = { ...C.TRASH_DEFAULT, moved: C.movedFromNotices([{ movedTo: "2026-12-26" }]) };
 const xw = C.pickupInWeek(new Date(2026, 11, 21), mv);
 eq([C.dayKey(xw.date), xw.moved, xw.shifted], ["2026-12-26", true, true], "a city notice moves Christmas-week pickup to Saturday");
