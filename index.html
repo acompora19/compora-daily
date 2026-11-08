@@ -495,7 +495,7 @@ function loadFeed(force = false) {
   document.head.appendChild(s);
 }
 function allEvents(from, to) {
-  const extras = (state.board.extras || []).map(it => C.foundToEvent(it)).filter(Boolean);
+  const extras = C.extrasToShow(state.board.extras || [], state.calEvents).map(it => C.foundToEvent(it)).filter(Boolean);
   const town = state.showTown ? C.townEvents(state.town.events, "Canal Winchester", from, to) : [];
   return [...state.calEvents, ...extras, ...town, ...C.holidayEvents(from, to), ...C.trashEvents(from, to, trashCfg())].filter(e => e.start < to.getTime() && e.end > from.getTime());
 }
@@ -574,8 +574,11 @@ async function settleFind(id, accept) {
     // fallback: keep it on the board only, if the calendar bridge isn't set up or is down
     const ev = C.foundToEvent(it);
     const res = ev ? await addToGoogle(ev, it.who) : { error: "bad date" };
-    if (res.ok) { toast(`Added to the ${res.calendar || "Family"} calendar`); render(); setTimeout(loadEvents, 1500); setTimeout(loadEvents, 20000); }
-    else {
+    if (res.ok) {
+      // keep a stand-in on the board until Google's calendar feed catches up (it can lag a few hours)
+      await saveBoard({ extras: [...(state.board.extras || []).filter(x => x.id !== it.id), { ...it, status: "accepted", accepted: Date.now(), google: { calendar: res.calendar || "Family", id: res.id || "", at: Date.now() } }].slice(-200) });
+      toast(`Added to the ${res.calendar || "Family"} calendar`); setTimeout(loadEvents, 20000);
+    } else {
       await saveBoard({ extras: [...(state.board.extras || []).filter(x => x.id !== it.id), { ...it, status: "accepted", accepted: Date.now() }].slice(-200) });
       toast(res.error && /GCAL_HOOK/.test(res.error) ? "On the board (Google Calendar bridge not set up yet)" : `On the board only: ${res.error || "couldn't reach Google Calendar"}`);
     }
@@ -705,9 +708,10 @@ function showEvent(e) {
     ${e.note ? `<div class="meta">${esc(e.note)}</div>` : ""}
     ${e.desc ? `<p>${esc(e.desc)}</p>` : ""}
     ${e.sample ? `<div class="meta">This is a sample event. Connect the calendars in Setup to see the real ones.</div>` : ""}
+    ${e.google ? `<div class="meta">On the ${esc(e.google.calendar || "Family")} calendar in Google. (Google's feed can take a few hours to show it here; this stand-in goes away on its own.)</div>` : ""}
     <div class="acts">${e.location ? `<a class="btn quiet small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location)}">Directions</a>` : ""}
     ${e.url && /^https?:/.test(e.url) ? `<a class="btn quiet small" target="_blank" rel="noopener" href="${esc(e.url)}">Details</a>` : ""}
-    ${e.found ? `<button class="btn quiet small" type="button" data-togoogle="${esc(e.id.replace(/^found-/, ""))}">→ Google Calendar</button><button class="btn quiet small" type="button" data-unaccept="${esc(e.id.replace(/^found-/, ""))}">Remove</button>` : ""}
+    ${e.found && !e.google ? `<button class="btn quiet small" type="button" data-togoogle="${esc(e.id.replace(/^found-/, ""))}">→ Google Calendar</button><button class="btn quiet small" type="button" data-unaccept="${esc(e.id.replace(/^found-/, ""))}">Remove</button>` : ""}
     <button class="btn small" type="button" onclick="this.closest('dialog').close()">Close</button></div>`;
   $("evDialog").showModal();
 }
@@ -727,7 +731,7 @@ document.addEventListener("click", e => {
     const it = (state.board.extras || []).find(x => x.id === tg.dataset.togoogle); const ev = it && C.foundToEvent(it); if (!ev) return;
     tg.disabled = true; tg.textContent = "Adding…";
     addToGoogle(ev, it.who).then(res => {
-      if (res.ok) { saveBoard({ extras: (state.board.extras || []).filter(x => x.id !== it.id) }); toast(`Added to the ${res.calendar || "Family"} calendar`); tg.closest("dialog").close(); setTimeout(loadEvents, 1500); setTimeout(loadEvents, 20000); }
+      if (res.ok) { saveBoard({ extras: (state.board.extras || []).map(x => x.id === it.id ? { ...x, google: { calendar: res.calendar || "Family", id: res.id || "", at: Date.now() } } : x) }); toast(`Added to the ${res.calendar || "Family"} calendar`); tg.closest("dialog").close(); setTimeout(loadEvents, 20000); }
       else { tg.disabled = false; tg.textContent = "→ Google Calendar"; toast(res.error || "Couldn't reach Google Calendar"); }
     });
     return;

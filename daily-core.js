@@ -222,7 +222,18 @@ function foundToEvent(it, cal = "mail") {
   let end = t1 ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), t1[0], t1[1]).getTime() : (t0 ? start + HOUR : start + DAY);
   if (end <= start) end = start + (t0 ? HOUR : DAY);
   return { id: `found-${it.id}`, cal: it.who && PEOPLE[it.who] ? it.who : cal, title: it.title, start, end, allDay: !t0, location: it.location || "",
-    desc: [it.note, it.from ? `Found in email from ${it.from}` : "", it.subject ? `"${it.subject}"` : ""].filter(Boolean).join("\n"), found: true };
+    desc: [it.note, it.from ? `Found in email from ${it.from}` : "", it.subject ? `"${it.subject}"` : ""].filter(Boolean).join("\n"), found: true, google: it.google || null };
+}
+// Which board-only items still need drawing. An item that was sent to Google Calendar (it.google) stays on the board
+// as a stand-in until the calendar feed shows the same title on the same day (Google's secret iCal link can lag a
+// few hours), and is dropped after two days regardless. Items never sent to Google always show.
+function extrasToShow(extras = [], calEvents = [], now = Date.now()) {
+  const seen = new Set(calEvents.map(e => `${dayKey(e.start)}|${String(e.title || "").trim().toLowerCase()}`));
+  return extras.filter(it => {
+    if (!it.google) return true;
+    if (now - (it.google.at || 0) > 2 * DAY) return false;
+    return !seen.has(`${it.date}|${String(it.title || "").trim().toLowerCase()}`);
+  });
 }
 // Day Out's events.json → board events for our town (the "Town" calendar).
 function townEvents(dayOutEvents = [], town = "Canal Winchester", from, to) {
@@ -450,6 +461,6 @@ function sampleEvents(now = new Date()) {
 }
 
 export { HOUR, DAY, DN, DNL, MN, MNL, HOME, PEOPLE, personFor, dayKey, fromKey, startOfDay, addDays, daysBetween, fmtClock, fmtShortClock, fmtDay, fmtLongDay, fmtRelativeDay,
-  holidaysFor, holidayOn, holidayFor, holidayEvents, nthWeekday, TRASH_DEFAULT, kindsLabel, recollectPickups, weekStart, pickupInWeek, pickups, trashNotice, trashEvents, movedFromNotices, foundToEvent, townEvents,
+  holidaysFor, holidayOn, holidayFor, holidayEvents, nthWeekday, TRASH_DEFAULT, kindsLabel, recollectPickups, weekStart, pickupInWeek, pickups, trashNotice, trashEvents, movedFromNotices, foundToEvent, extrasToShow, townEvents,
   icsToEvents, eventsOnDay, chipTime, timeRange, upNext, monthGrid,
   parseOpenMeteo, dayHours, dressTemp, GEAR_NAME, gearFor, WEAR, wearFor, daySummary, outlookLine, sampleEvents };

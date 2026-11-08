@@ -148,3 +148,16 @@ eq(C.gearFor(hrs[9], hrs.slice(10)), "rainy", "Beavy wears rain gear when rain i
 
 console.log(fails ? `\n${fails} FAILED` : "\nall good");
 process.exit(fails ? 1 : 0);
+
+// extrasToShow: stand-ins for items sent to Google go away once the feed has them, or after two days
+{
+  const sent = { id: "a", title: "Credit card payment due", date: "2026-11-10", who: "family", google: { calendar: "Family", at: Date.UTC(2026, 10, 8) } };
+  const local = { id: "b", title: "Board only", date: "2026-11-12", who: "family" };
+  const now = Date.UTC(2026, 10, 8, 1);
+  assert.deepEqual(C.extrasToShow([sent, local], [], now).map(x => x.id), ["a", "b"], "shows the stand-in while the feed lags");
+  const fed = [{ title: "credit card payment due ", start: new Date(2026, 10, 10).getTime(), end: new Date(2026, 10, 11).getTime() }];
+  assert.deepEqual(C.extrasToShow([sent, local], fed, now).map(x => x.id), ["b"], "drops it once the calendar has it");
+  assert.deepEqual(C.extrasToShow([sent, local], [], now + 3 * 86400000).map(x => x.id), ["b"], "drops it after two days anyway");
+  assert.equal(C.foundToEvent(sent).google.calendar, "Family");
+}
+console.log("All good");
