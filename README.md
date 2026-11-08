@@ -66,7 +66,7 @@ What it looks at: mail from the last 3 days, minus Gmail's Promotions/Social/For
 1. https://script.google.com → **New project** → delete what's there, paste all of `gcal/Code.gs`. Set `KEY` to the same `WORKER_KEY` string. Name the project "Compora Daily calendar".
 2. **Deploy → New deployment** → type **Web app** → Execute as **Me**, Who has access **Anyone** → Deploy → authorize when asked → copy the **Web app URL** (ends in `/exec`).
 3. Cloudflare Worker → **Settings → Variables and Secrets** → Add, type **Secret**, `GCAL_HOOK` = that URL → Deploy.
-4. Tap ✓ Approve on a find; it lands on the Family calendar (or Tony's, when the find is about Tony) and shows up on the board from there. If the bridge isn't set up, Approve keeps the find on the board only and says so.
+4. Tap ✓ Approve on a find; it lands on the Family calendar (or Tony's, when the find is about Tony). Google's secret iCal feed can take a few hours to include a new event, so the board keeps a stand-in (same color, popup says "On the Family calendar in Google") until the feed catches up, two days at most. If the bridge isn't set up or is down, Approve keeps the find on the board only and says so; its popup then has a "→ Google Calendar" button to retry.
    Changing `Code.gs` later needs **Deploy → Manage deployments → edit → New version** for the URL to pick it up.
 
 ### 7. The tablet
